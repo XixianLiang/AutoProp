@@ -29,7 +29,7 @@ class DeviceState(object):
         self.state_str = self.__get_state_str()
         self.structure_str = self.__get_content_free_state_str()
         self.search_content = self.__get_search_content()
-        self.text_representation = self.get_text_representation()
+        self.text_representation = self.get_text_representation(merge_buttons=False)
         self.possible_events = None
         self.width = device.get_width(refresh=True)
         self.height = device.get_height(refresh=False)
@@ -70,8 +70,6 @@ class DeviceState(object):
 
     def __assemble_view_tree(self, root_view, views):
         if not len(self.view_tree): # bootstrap
-            if not len(views): # to fix if views is empty
-                return
             self.view_tree = copy.deepcopy(views[0])
             self.__assemble_view_tree(self.view_tree, views)
         else:
@@ -103,6 +101,10 @@ class DeviceState(object):
             DeviceState.__assign_depth(views, views[view_id], depth + 1)
 
     def __get_state_str(self):
+        """
+        return a md5 hashed raw state str.
+        A state str is made up of all its views and foregrand activities.
+        """
         state_str_raw = self.__get_state_str_raw()
         return md5(state_str_raw)
 
@@ -117,14 +119,18 @@ class DeviceState(object):
                                self.device.display_info["height"]]
             }))
         else:
-            view_signatures = set()
+            view_signatures = list()
             for view in self.views:
                 view_signature = DeviceState.__get_view_signature(view)
                 if view_signature:
-                    view_signatures.add(view_signature)
+                    view_signatures.append(view_signature)
             return "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
 
     def __get_content_free_state_str(self):
+        """
+        return a md5 hashed raw content free str
+        a content free state is a special state which has no content messages.
+        """
         if self.device.humanoid is not None:
             import json
             from xmlrpc.client import ServerProxy
@@ -135,11 +141,21 @@ class DeviceState(object):
                                self.device.display_info["height"]]
             }))
         else:
-            view_signatures = set()
+            view_signatures = list()
             for view in self.views:
                 view_signature = DeviceState.__get_content_free_view_signature(view)
+                # add a content free signiture.
                 if view_signature:
-                    view_signatures.add(view_signature)
+                    view_signatures.append(view_signature)
+            # join all the sigatures together to get the state str to identify a certain page 
+            '''A sample state_str:
+            it.feio.android.omninotes/.intro.IntroActivity{
+            [class]android.view.View[resource_id]android:id/navigationBarBackground,
+            [class]android.widget.FrameLayout[resource_id]None,
+            [class]android.widget.FrameLayout[resource_id]android:id/content,
+            [class]android.widget.ImageButton[resource_id]it.feio.android.omninotes:id/next,
+            [class]android.widget.ImageView[resource_id]None,}'
+            '''
             state_str = "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
         import hashlib
         return hashlib.md5(state_str.encode('utf-8')).hexdigest()
@@ -235,20 +251,22 @@ class DeviceState(object):
         @param view_dict: dict, an element of list DeviceState.views
         @return:
         """
-        if 'signature' in view_dict:
-            return view_dict['signature']
+        # if 'signature' in view_dict:
+        #     return view_dict['signature']
 
         view_text = DeviceState.__safe_dict_get(view_dict, 'text', "None")
         if view_text is None or len(view_text) > 50:
             view_text = "None"
 
-        signature = "[class]%s[resource_id]%s[text]%s[%s,%s,%s]" % \
+        signature = "[class]%s[resource_id]%s[text]%s[%s,%s,%s,%s]" % \
                     (DeviceState.__safe_dict_get(view_dict, 'class', "None"),
                      DeviceState.__safe_dict_get(view_dict, 'resource_id', "None"),
                      view_text,
                      DeviceState.__key_if_true(view_dict, 'enabled'),
                      DeviceState.__key_if_true(view_dict, 'checked'),
-                     DeviceState.__key_if_true(view_dict, 'selected'))
+                     DeviceState.__key_if_true(view_dict, 'selected'),
+                     DeviceState.__key_if_true(view_dict, 'visible')
+                     )
         view_dict['signature'] = signature
         return signature
 
@@ -328,6 +346,9 @@ class DeviceState(object):
 
     @staticmethod
     def __safe_dict_get(view_dict, key, default=None):
+        """
+        get the target view
+        """
         value = view_dict[key] if key in view_dict else None
         return value if value is not None else default
 
@@ -594,6 +615,7 @@ class DeviceState(object):
         state_desc = '\n'.join(view_descs)
         activity = self.foreground_activity.split('/')[-1]
         # print(views_without_id)
+        # print(state_desc)
         return state_desc, activity, indexed_views
 
     def _get_self_ancestors_property(self, view, key, default=None):

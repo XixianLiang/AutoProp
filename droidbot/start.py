@@ -107,6 +107,14 @@ def main():
     if not opts.output_dir and opts.cv_mode:
         print("To run in CV mode, you need to specify an output dir (using -o option).")
 
+    if os.path.exists(opts.output_dir + "/index.html"):
+        if (input("Output already exist, want to overwrite? [Y/n]") not in ["Y", "y", ""]):
+            return
+        import shutil
+        shutil.rmtree(opts.output_dir)
+    
+    os.mkdir(opts.output_dir)
+    
     if opts.distributed:
         if opts.distributed == "master":
             start_mode = "master"

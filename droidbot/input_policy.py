@@ -59,6 +59,7 @@ class InputPolicy(object):
         :param input_manager: instance of InputManager
         """
         self.action_count = 0
+        
         while input_manager.enabled and self.action_count < input_manager.event_count:
             try:
                 # # make sure the first event is go to HOME screen
@@ -77,9 +78,6 @@ class InputPolicy(object):
             except InputInterruptedException as e:
                 self.logger.warning("stop sending events: %s" % e)
                 break
-            # except RuntimeError as e:
-            #     self.logger.warning(e.message)
-            #     break
             except Exception as e:
                 self.logger.warning("exception during sending events: %s" % e)
                 import traceback
@@ -95,6 +93,58 @@ class InputPolicy(object):
         """
         pass
 
+class FuzzingPolicy(InputPolicy):
+    """
+    DFS/BFS (according to search_method) strategy to explore UFG (new)
+    """
+
+    def __init__(self, device, app):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.device = device
+        self.app = app
+        self.action_count = 0
+        self.master = None
+
+    def start(self, input_manager):
+        """
+        start producing events
+        :param input_manager: instance of InputManager
+        """
+        self.action_count = 0
+        
+        while input_manager.enabled and self.action_count < input_manager.event_count:
+            try:
+                # # make sure the first event is go to HOME screen
+                # # the second event is to start the app
+                # if self.action_count == 0 and self.master is None:
+                #     event = KeyEvent(name="HOME")
+                # elif self.action_count == 1 and self.master is None:
+                #     event = IntentEvent(self.app.get_start_intent())
+                if self.action_count == 0 and self.master is None:
+                    event = KillAppEvent(app=self.app)
+                else:
+                    event = self.generate_event()
+                input_manager.add_event(event)
+            except KeyboardInterrupt:
+                break
+            except InputInterruptedException as e:
+                self.logger.warning("stop sending events: %s" % e)
+                break
+            except Exception as e:
+                self.logger.warning("exception during sending events: %s" % e)
+                import traceback
+                traceback.print_exc()
+                continue
+            self.action_count += 1
+
+    @abstractmethod
+    def generate_event(self):
+        """
+        generate an event
+        @return:
+        """
+        current_state = self.device.get_current_state()
+        print("Current state: %s" % current_state.state_str)
 
 class NoneInputPolicy(InputPolicy):
     """
@@ -142,48 +192,17 @@ class UtgBasedInputPolicy(InputPolicy):
         self.current_state = self.device.get_current_state()
         if self.current_state is None:
             import time
-            time.sleep(5)
+            time.sleep(3)
             return KeyEvent(name="BACK")
 
-        self.__update_utg()
+        self.utg.add_transition(self.last_event, self.last_state, self.current_state)
 
-        # update last view trees for humanoid
-        if self.device.humanoid is not None:
-            self.humanoid_view_trees = self.humanoid_view_trees + [self.current_state.view_tree]
-            if len(self.humanoid_view_trees) > 4:
-                self.humanoid_view_trees = self.humanoid_view_trees[1:]
-
-        event = None
-
-        # if the previous operation is not finished, continue
-        if len(self.script_events) > self.script_event_idx:
-            event = self.script_events[self.script_event_idx].get_transformed_event(self)
-            self.script_event_idx += 1
-
-        # First try matching a state defined in the script
-        if event is None and self.script is not None:
-            operation = self.script.get_operation_based_on_state(self.current_state)
-            if operation is not None:
-                self.script_events = operation.events
-                # restart script
-                event = self.script_events[0].get_transformed_event(self)
-                self.script_event_idx = 1
-
-        if event is None:
-            event = self.generate_event_based_on_utg()
-
-        # update last events for humanoid
-        if self.device.humanoid is not None:
-            self.humanoid_events = self.humanoid_events + [event]
-            if len(self.humanoid_events) > 3:
-                self.humanoid_events = self.humanoid_events[1:]
+        event = self.generate_event_based_on_utg()
 
         self.last_state = self.current_state
         self.last_event = event
         return event
 
-    def __update_utg(self):
-        self.utg.add_transition(self.last_event, self.last_state, self.current_state)
 
     @abstractmethod
     def generate_event_based_on_utg(self):
@@ -212,7 +231,7 @@ class UtgNaiveSearchPolicy(UtgBasedInputPolicy):
         self.last_state = None
 
         self.preferred_buttons = ["yes", "ok", "activate", "detail", "more", "access",
-                                  "allow", "check", "agree", "try", "go", "next"]
+                                  "allow", "check", "agree", "try", "go", "next", "delete", "remove", "add", "search"]
 
     def generate_event_based_on_utg(self):
         """
@@ -367,7 +386,6 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
         self.__num_steps_outside = 0
         self.__event_trace = ""
         self.__missed_states = set()
-        self.__random_explore = False
 
     def generate_event_based_on_utg(self):
         """
@@ -404,7 +422,6 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
                     # If the app had been restarted too many times, enter random mode
                     msg = "The app had been restarted too many times. Entering random mode."
                     self.logger.info(msg)
-                    self.__random_explore = True
                 else:
                     # Start the app
                     self.__event_trace += EVENT_FLAG_START_APP
@@ -432,73 +449,52 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
         # Get all possible input events
         possible_events = current_state.get_possible_input()
 
-        if self.random_input:
-            random.shuffle(possible_events)
+        random.shuffle(possible_events)
+
+        # TODO
+        # if there's a edit of click event, do it first.
+        print([e.event_type for e in possible_events])
+        possible_events = sorted(possible_events, key=lambda event: event.event_type in ["touch", "set_text"], reverse=True)
+        print([e.event_type for e in possible_events])
 
         if self.search_method == POLICY_GREEDY_DFS:
             possible_events.append(KeyEvent(name="BACK"))
         elif self.search_method == POLICY_GREEDY_BFS:
             possible_events.insert(0, KeyEvent(name="BACK"))
 
-        # get humanoid result, use the result to sort possible events
-        # including back events
-        if self.device.humanoid is not None:
-            possible_events = self.__sort_inputs_by_humanoid(possible_events)
-
         # If there is an unexplored event, try the event first
+        all_explored = True
         for input_event in possible_events:
             if not self.utg.is_event_explored(event=input_event, state=current_state):
+                all_explored = False
                 self.logger.info("Trying an unexplored event.")
                 self.__event_trace += EVENT_FLAG_EXPLORE
                 return input_event
 
-        target_state = self.__get_nav_target(current_state)
-        if target_state:
-            navigation_steps = self.utg.get_navigation_steps(from_state=current_state, to_state=target_state)
-            if navigation_steps and len(navigation_steps) > 0:
-                self.logger.info("Navigating to %s, %d steps left." % (target_state.state_str, len(navigation_steps)))
-                self.__event_trace += EVENT_FLAG_NAVIGATE
-                return navigation_steps[0][1]
+        # target_state = self.__get_nav_target(current_state)
+        # if target_state:
+        #     navigation_steps = self.utg.get_navigation_steps(from_state=current_state, to_state=target_state)
+        #     if navigation_steps and len(navigation_steps) > 0:
+        #         self.logger.info("Navigating to %s, %d steps left." % (target_state.state_str, len(navigation_steps)))
+        #         self.__event_trace += EVENT_FLAG_NAVIGATE
+        #         return navigation_steps[0][1]
 
-        if self.__random_explore:
-            self.logger.info("Trying random event.")
+        # if self.__random_explore:
+        #     self.logger.info("Trying random event.")
+        #     random.shuffle(possible_events)
+        #     return possible_events[0]
+
+        # if All events explored try a random event
+        if all_explored:
+            self.logger.info("Cannot find an exploration target. Trying a random event...")
             random.shuffle(possible_events)
             return possible_events[0]
 
-        # If couldn't find a exploration target, stop the app
-        stop_app_intent = self.app.get_stop_intent()
-        self.logger.info("Cannot find an exploration target. Trying to restart app...")
-        self.__event_trace += EVENT_FLAG_STOP_APP
-        return IntentEvent(intent=stop_app_intent)
-
-    def __sort_inputs_by_humanoid(self, possible_events):
-        if sys.version.startswith("3"):
-            from xmlrpc.client import ServerProxy
-        else:
-            from xmlrpclib import ServerProxy
-        proxy = ServerProxy("http://%s/" % self.device.humanoid)
-        request_json = {
-            "history_view_trees": self.humanoid_view_trees,
-            "history_events": [x.__dict__ for x in self.humanoid_events],
-            "possible_events": [x.__dict__ for x in possible_events],
-            "screen_res": [self.device.display_info["width"],
-                           self.device.display_info["height"]]
-        }
-        result = json.loads(proxy.predict(json.dumps(request_json)))
-        new_idx = result["indices"]
-        text = result["text"]
-        new_events = []
-
-        # get rid of infinite recursive by randomizing first event
-        if not self.utg.is_state_reached(self.current_state):
-            new_first = random.randint(0, len(new_idx) - 1)
-            new_idx[0], new_idx[new_first] = new_idx[new_first], new_idx[0]
-
-        for idx in new_idx:
-            if isinstance(possible_events[idx], SetTextEvent):
-                possible_events[idx].text = text
-            new_events.append(possible_events[idx])
-        return new_events
+        # # If couldn't find a exploration target, stop the app
+        # stop_app_intent = self.app.get_stop_intent()
+        # self.logger.info("Cannot find an exploration target. Trying to restart app...")
+        # self.__event_trace += EVENT_FLAG_STOP_APP
+        # return IntentEvent(intent=stop_app_intent)
 
     def __get_nav_target(self, current_state):
         # If last event is a navigation event

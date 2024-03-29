@@ -73,6 +73,7 @@ class UTG(object):
 
         if (old_state.state_str, new_state.state_str) not in self.G.edges():
             self.G.add_edge(old_state.state_str, new_state.state_str, events={})
+
         self.G[old_state.state_str][new_state.state_str]["events"][event_str] = {
             "event": event,
             "id": self.effective_event_count
@@ -80,6 +81,7 @@ class UTG(object):
 
         if (old_state.structure_str, new_state.structure_str) not in self.G2.edges():
             self.G2.add_edge(old_state.structure_str, new_state.structure_str, events={})
+
         self.G2[old_state.structure_str][new_state.structure_str]["events"][event_str] = {
             "event": event,
             "id": self.effective_event_count

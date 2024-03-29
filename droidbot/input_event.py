@@ -199,7 +199,9 @@ class EventLog(object):
         }
 
     def save2dir(self, output_dir=None):
-        # Save event
+        """
+        Save event into a file
+        """
         if output_dir is None:
             if self.device.output_dir is None:
                 return
@@ -266,7 +268,7 @@ class EventLog(object):
 
     def stop(self):
         """
-        finish sending event
+        finish sending event, recording the target state of the event and save to dir.
         """
         self.stop_profiling()
         self.to_state = self.device.get_current_state()

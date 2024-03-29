@@ -238,7 +238,7 @@ class DroidBotAppConn(Adapter):
 
         import copy
         view_tree = copy.deepcopy(self.last_acc_event['root_node'])
-        # print view_tree
+        # print(view_tree)
         if not view_tree:
             return None
         view_tree['parent'] = -1
