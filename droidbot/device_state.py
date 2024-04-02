@@ -5,6 +5,7 @@ import os
 from .utils import md5
 from .input_event import TouchEvent, LongTouchEvent, ScrollEvent, SetTextEvent, KeyEvent
 
+RECYCLERVIEW_ID = "androidx.recyclerview.widget.RecyclerView"
 
 class DeviceState(object):
     """
@@ -23,16 +24,88 @@ class DeviceState(object):
         self.tag = tag
         self.screenshot_path = screenshot_path
         self.views = self.__parse_views(views)
+        self.views_without_recyclerview = None
         self.view_tree = {}
+        self.view_tree_without_recyclerview = {}
         self.__assemble_view_tree(self.view_tree, self.views)
         self.__generate_view_strs()
-        self.state_str = self.__get_state_str()
+        self.recyRootNode = None
+        self.dump_recyclerview()
+
+        self.state_str, self.state_str_without_recyclerview = self.__get_state_str()
+
+        """
+        state str_1 is the state str which distinguish two different state
+        state str_2 is the state str which delete all the recyclerview in the state
+
+        len(view) 1 and len(view) 2 is the length of view list and the view list without recyclerview (and its succeussors)
+        """
+        print("state_str1 %s" % self.state_str)
+        print("state_str2 %s" % self.state_str_without_recyclerview)
+        print("len(view) 1 = %d" % len(self.views))
+        print("len(view) 2 = %d" % len(self.views_without_recyclerview))
+        # print("recyclerview temp_id is %d " % (self.recyRootNode["temp_id"] if self.recyRootNode else 0))
+
+
         self.structure_str = self.__get_content_free_state_str()
         self.search_content = self.__get_search_content()
         self.text_representation = self.get_text_representation(merge_buttons=False)
         self.possible_events = None
         self.width = device.get_width(refresh=True)
         self.height = device.get_height(refresh=False)
+
+    def dump_recyclerview(self):
+        """
+        checkout the view and delete all the listview in the tree
+        which aims at getting the structer without the recyclerview, and to figure out the add DMF.
+
+        Meanwhile, this function will delete the recyclerview subtree from the view_list.
+        """
+        
+        self.view_tree_without_recyclerview = copy.deepcopy(self.view_tree)
+        self.views_without_recyclerview = copy.deepcopy(self.views)
+
+        def remove_widget(temp_id):
+            """
+            remove widget according to the temp_id
+            """
+            for item in self.views_without_recyclerview:
+                if item["temp_id"] == temp_id:
+                    self.views_without_recyclerview.remove(item)
+
+        def dfs_clean_recyclerview(node, is_subtree):
+            """
+            Use a depth first search algorithm to traverse the tree, 
+            and prune the recyclerview node and its succesors in the tree.
+            """
+
+            if node is None:
+                return
+            
+            # delete the node from the list if current view is a subtree of recyclerview
+            # But don't delete the root node of this subtree
+            if is_subtree and node["class"] != RECYCLERVIEW_ID:
+                temp_id = node["temp_id"]
+                remove_widget(temp_id)
+
+            # recycler_view_node = None
+            for child in node["children"]:
+                if child["class"] == RECYCLERVIEW_ID:
+                    print("### find recyclerview, it has %d childrens ###" % child["child_count"])
+                    print("### recycler view temp_id is %d ###" % child["temp_id"])
+                    node["child_count"] -= 1
+                    # recycler_view_node = child
+                    self.recyRootNode = child
+                    dfs_clean_recyclerview(child, is_subtree=True)
+                    continue
+                dfs_clean_recyclerview(child, is_subtree=is_subtree)
+            # if recycler_view_node:
+            #     self.node1 = node
+            #     node["child_count"] -= 1
+            #     node["children"].remove(recycler_view_node)
+            
+        dfs_clean_recyclerview(self.view_tree_without_recyclerview, is_subtree=False)
+        
 
     @property
     def activity_short_name(self):
@@ -59,7 +132,7 @@ class DeviceState(object):
         if not raw_views or len(raw_views) == 0:
             return views
 
-        for view_dict in raw_views:
+        for index, view_dict in enumerate(raw_views):
             # # Simplify resource_id
             # resource_id = view_dict['resource_id']
             # if resource_id is not None and ":" in resource_id:
@@ -105,10 +178,15 @@ class DeviceState(object):
         return a md5 hashed raw state str.
         A state str is made up of all its views and foregrand activities.
         """
-        state_str_raw = self.__get_state_str_raw()
-        return md5(state_str_raw)
+        state_str_raw = self.__get_state_str_raw(with_recyclerview=True)
+        state_str_without_recyclerview_raw = self.__get_state_str_raw(with_recyclerview=False)
+        return md5(state_str_raw), md5(state_str_without_recyclerview_raw)
 
-    def __get_state_str_raw(self):
+    def __get_state_str_raw(self, with_recyclerview):
+        """
+        param: 
+        type: get the state str with of without 
+        """
         if self.device.humanoid is not None:
             import json
             from xmlrpc.client import ServerProxy
@@ -120,10 +198,20 @@ class DeviceState(object):
             }))
         else:
             view_signatures = list()
-            for view in self.views:
-                view_signature = DeviceState.__get_view_signature(view)
-                if view_signature:
-                    view_signatures.append(view_signature)
+            if with_recyclerview:
+                for view in self.views:
+                    view_signature = DeviceState.__get_view_signature(view)
+                    if view_signature:
+                        view_signatures.append(view_signature)
+            else:
+                for view in self.views_without_recyclerview:
+                    view_signature = DeviceState.__get_view_signature(view)
+                    if view_signature and view["class"] == RECYCLERVIEW_ID:
+                        print("##### %s #####" % view_signature)
+                        view_signature += "[child_count]%d" % (2 if view["child_count"] > 2 else view["child_count"])
+                        view["signature"] = view_signature
+                    if view_signature:
+                        view_signatures.append(view_signature)
             return "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
 
     def __get_content_free_state_str(self):
@@ -258,6 +346,8 @@ class DeviceState(object):
         if view_text is None or len(view_text) > 50:
             view_text = "None"
 
+
+        
         signature = "[class]%s[resource_id]%s[text]%s[%s,%s,%s,%s]" % \
                     (DeviceState.__safe_dict_get(view_dict, 'class', "None"),
                      DeviceState.__safe_dict_get(view_dict, 'resource_id', "None"),
