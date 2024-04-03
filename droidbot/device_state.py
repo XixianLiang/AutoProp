@@ -25,6 +25,9 @@ class DeviceState(object):
         self.screenshot_path = screenshot_path
         self.views = self.__parse_views(views)
         self.views_without_recyclerview = None
+
+        self.recyView_Child_count = 0
+
         self.view_tree = {}
         self.view_tree_without_recyclerview = {}
         self.__assemble_view_tree(self.view_tree, self.views)
@@ -46,6 +49,8 @@ class DeviceState(object):
         print("len(view) 2 = %d" % len(self.views_without_recyclerview))
         # print("recyclerview temp_id is %d " % (self.recyRootNode["temp_id"] if self.recyRootNode else 0))
 
+        
+        self.state_str = self.state_str_without_recyclerview
 
         self.structure_str = self.__get_content_free_state_str()
         self.search_content = self.__get_search_content()
@@ -93,6 +98,7 @@ class DeviceState(object):
                 if child["class"] == RECYCLERVIEW_ID:
                     print("### find recyclerview, it has %d childrens ###" % child["child_count"])
                     print("### recycler view temp_id is %d ###" % child["temp_id"])
+                    self.recyView_Child_count = child["child_count"]
                     node["child_count"] -= 1
                     # recycler_view_node = child
                     self.recyRootNode = child

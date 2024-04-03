@@ -807,6 +807,16 @@ class Device(object):
         return local_image_path
 
     def get_current_state(self):
+        """
+        We will call this function for at least 2 times.
+        When we generate an event, we need to get the "from_state" and "to_state".
+
+        When we use UtgSearch policy to generate an event, we will call this function
+        one more time. Which is used to get the current state and figure out which event
+        to generate.
+
+        i.e. In the default UtgSearch policy, this function will be called 3 times. 
+        """
         self.logger.debug("getting current device state...")
         current_state = None
         try:
