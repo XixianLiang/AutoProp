@@ -59,6 +59,7 @@ class InputPolicy(object):
         :param input_manager: instance of InputManager
         """
         self.action_count = 0
+        self.add_DMF = dict()
         
         while input_manager.enabled and self.action_count < input_manager.event_count:
             try:
@@ -73,6 +74,31 @@ class InputPolicy(object):
                 else:
                     event = self.generate_event()
                 input_manager.add_event(event)
+                if self.action_count > 2:
+                    if self.current_state.recyView_Child_count == 1:
+                        self.add_start_state = self.current_state
+                        self.add_DMF[self.current_state.state_str_without_recyclerview] = []
+                    if self.current_state.recyView_Child_count == 2:
+                        self.add_end_state = self.current_state
+                        print("PostCond satisfied, trying to find the trace")
+                        import networkx as nx
+                        state_strs = nx.shortest_path(G=self.utg.G, \
+                                                      source=self.add_start_state.state_str, \
+                                                      target=self.add_end_state.state_str)
+                        self.add_DMF[self.current_state.state_str_without_recyclerview] = state_strs
+                        with open(self.app.output_dir + "/add_DMF", "w") as file:
+                            file.write(self.add_DMF)
+                # if self.action_count > 2:
+                #     if self.action_count == 10:
+                #         self.add_start_state = self.current_state
+                #     if self.action_count == 20:
+                #         self.add_end_state = self.current_state
+                #         print("PostCond satisfied, trying to find the trace")
+                #         import networkx as nx
+                #         state_strs = nx.shortest_path(G=self.utg.G, \
+                #                                       source=self.add_start_state.state_str, \
+                #                                       target=self.add_end_state.state_str)
+                #         self.add_DMF = state_strs
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
