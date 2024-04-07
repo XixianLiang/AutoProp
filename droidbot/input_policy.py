@@ -2,6 +2,7 @@ import sys
 import json
 import logging
 import random
+import networkx as nx
 from abc import abstractmethod
 
 from .input_event import InputEvent, KeyEvent, IntentEvent, TouchEvent, ManualEvent, SetTextEvent, KillAppEvent
@@ -81,13 +82,12 @@ class InputPolicy(object):
                     if self.current_state.recyView_Child_count == 2:
                         self.add_end_state = self.current_state
                         print("PostCond satisfied, trying to find the trace")
-                        import networkx as nx
                         state_strs = nx.shortest_path(G=self.utg.G, \
                                                       source=self.add_start_state.state_str, \
                                                       target=self.add_end_state.state_str)
                         self.add_DMF[self.current_state.state_str_without_recyclerview] = state_strs
                         with open(self.app.output_dir + "/add_DMF", "w") as file:
-                            file.write(self.add_DMF)
+                            file.write(json.dumps(self.add_DMF))
                 # if self.action_count > 2:
                 #     if self.action_count == 10:
                 #         self.add_start_state = self.current_state

@@ -43,14 +43,15 @@ class DeviceState(object):
 
         len(view) 1 and len(view) 2 is the length of view list and the view list without recyclerview (and its succeussors)
         """
-        print("state_str1 %s" % self.state_str)
-        print("state_str2 %s" % self.state_str_without_recyclerview)
-        print("len(view) 1 = %d" % len(self.views))
-        print("len(view) 2 = %d" % len(self.views_without_recyclerview))
+        # print("state_str1 %s" % self.state_str)
+        # print("state_str2 %s" % self.state_str_without_recyclerview)
+        # print("len(view) 1 = %d" % len(self.views))
+        # print("len(view) 2 = %d" % len(self.views_without_recyclerview))
         # print("recyclerview temp_id is %d " % (self.recyRootNode["temp_id"] if self.recyRootNode else 0))
-
+        print("state_str: %s" % self.state_str)
+        print("state_noRecy: %s" % self.state_str_without_recyclerview)
         
-        self.state_str = self.state_str_without_recyclerview
+        # self.state_str = self.state_str_without_recyclerview
 
         self.structure_str = self.__get_content_free_state_str()
         self.search_content = self.__get_search_content()
@@ -204,12 +205,17 @@ class DeviceState(object):
             }))
         else:
             view_signatures = list()
+            # for view in self.views:
+            #     view_signature = DeviceState.__get_view_signature(view)
+            #     if view_signature:
+            #         view_signatures.append(view_signature)
             if with_recyclerview:
-                for view in self.views:
-                    view_signature = DeviceState.__get_view_signature(view)
-                    if view_signature:
-                        view_signatures.append(view_signature)
-            else:
+                """
+                Abstract level 1:
+                Divide into 2 clusters
+                recyclerView_child_count = 1
+                recyclerView_child_count >= 2
+                """
                 for view in self.views_without_recyclerview:
                     view_signature = DeviceState.__get_view_signature(view)
                     if view_signature and view["class"] == RECYCLERVIEW_ID:
@@ -218,6 +224,16 @@ class DeviceState(object):
                         view["signature"] = view_signature
                     if view_signature:
                         view_signatures.append(view_signature)
+            else:
+                """
+                Abstract level 2:
+                Only 1 cluster
+                recyclerView_child_count = N (N is natural number)
+                """
+                for view in self.views_without_recyclerview:
+                    view_signature = DeviceState.__get_view_signature(view)
+                    if view_signature:
+                        view_signatures.append(view_signature)    
             return "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
 
     def __get_content_free_state_str(self):
