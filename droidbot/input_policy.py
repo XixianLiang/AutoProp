@@ -9,6 +9,7 @@ from .input_event import InputEvent, KeyEvent, IntentEvent, TouchEvent, ManualEv
 from .utg import UTG
 
 from .device_state import DeviceState
+from .input_manager import InputManager
 
 # Max number of restarts
 MAX_NUM_RESTARTS = 5
@@ -52,6 +53,7 @@ class DMF(object):
     def to_dict(self):
         return "{\"start_state\" : \"%s\", \n \"end_state\" : \"%s\", \n \"state_strs\": %s}" \
               % (self.start_state, self.end_state, json.dumps(self.state_strs))
+
 class InputPolicy(object):
     """
     This class is responsible for generating events to stimulate more app behaviour
@@ -67,7 +69,7 @@ class InputPolicy(object):
         self.action_count = 0
         self.master = None
 
-    def start(self, input_manager):
+    def start(self, input_manager:InputManager):
         """
         start producing events
         :param input_manager: instance of InputManager
