@@ -44,10 +44,10 @@ class InputInterruptedException(Exception):
 
 class DMF(object):
 
-    def __init__(self,s,e,l) -> None:
-        self.start_state = s
-        self.end_state = e
-        self.state_strs = l
+    def __init__(self) -> None:
+        self.start_state = ""
+        self.end_state = ""
+        self.state_strs = []
     
     def to_dict(self):
         return "{\"start_state\" : \"%s\", \n \"end_state\" : \"%s\", \n \"state_strs\": %s}" \
