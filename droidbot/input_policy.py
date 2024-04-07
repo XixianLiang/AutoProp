@@ -8,6 +8,8 @@ from abc import abstractmethod
 from .input_event import InputEvent, KeyEvent, IntentEvent, TouchEvent, ManualEvent, SetTextEvent, KillAppEvent
 from .utg import UTG
 
+from .device_state import DeviceState
+
 # Max number of restarts
 MAX_NUM_RESTARTS = 5
 # Max number of steps outside the app
@@ -41,19 +43,22 @@ class InputInterruptedException(Exception):
     pass
 
 class DMF(object):
-    def __init__(self) -> None:
-        self.start_state = ""
-        self.end_state = ""
-        self.state_strs = []
+
+    def __init__(self,s,e,l) -> None:
+        self.start_state = s
+        self.end_state = e
+        self.state_strs = l
     
     def to_dict(self):
-        return '{start_state : "%s", \n end_state : "%s", \n state_strs: %s}' % (self.start_state, self.end_state, str(self.state_strs))
-
+        return "{\"start_state\" : \"%s\", \n \"end_state\" : \"%s\", \n \"state_strs\": %s}" \
+              % (self.start_state, self.end_state, json.dumps(self.state_strs))
 class InputPolicy(object):
     """
     This class is responsible for generating events to stimulate more app behaviour
     It should call AppEventManager.send_event method continuously
     """
+
+    current_state:DeviceState
 
     def __init__(self, device, app):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -85,12 +90,14 @@ class InputPolicy(object):
                 input_manager.add_event(event)
                 if self.action_count > 2:
                     if self.current_state.recyView_Child_count == 1:
+                        # satisfied precondition, initialize a DMF function
                         # self.add_start_state = self.current_state
                         dmf = DMF()
                         dmf.start_state = self.current_state.state_str
                         self.DMF_dict[self.current_state.state_str_without_recyclerview] = dmf
                         
                     if self.current_state.recyView_Child_count == 2:
+                        # satisfied postcondition, find the DMF path and record the DMF 
                         dmf:DMF = self.DMF_dict[self.current_state.state_str_without_recyclerview]
                         dmf.end_state = self.current_state.state_str                      
                         print("PostCond satisfied, trying to find the trace")
@@ -99,22 +106,7 @@ class InputPolicy(object):
                                                       target=dmf.end_state)
                         dmf.state_strs = state_strs
                         # save the DMF data into a file
-                        with open(self.app.output_dir + "/add_DMF", "w") as file:
-                            data = ""
-                            for key, value in self.DMF_dict:
-                                data += '{"%s": %s}' % (key, value.to_dict())
-                            file.write(data)
-                # if self.action_count > 2:
-                #     if self.action_count == 10:
-                #         self.add_start_state = self.current_state
-                #     if self.action_count == 20:
-                #         self.add_end_state = self.current_state
-                #         print("PostCond satisfied, trying to find the trace")
-                #         import networkx as nx
-                #         state_strs = nx.shortest_path(G=self.utg.G, \
-                #                                       source=self.add_start_state.state_str, \
-                #                                       target=self.add_end_state.state_str)
-                #         self.add_DMF = state_strs
+                        self.output_DMF()
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
@@ -126,6 +118,19 @@ class InputPolicy(object):
                 traceback.print_exc()
                 continue
             self.action_count += 1
+    
+    def output_DMF(self):
+        """
+        save the found DMF into a json file
+        """
+        with open("add_DMF.json", "w") as file:
+            data = "{"
+            for index, (key, value) in enumerate(self.DMF_dict.items()):
+                data += '"%s": %s' % (key, value.to_dict())
+                if index != len(self.DMF_dict) - 1:
+                    data += ","
+            data += "}"
+            file.write(data)
 
     @abstractmethod
     def generate_event(self):
