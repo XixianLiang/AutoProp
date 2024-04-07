@@ -40,6 +40,14 @@ POLICY_LLM_GUIDED = "llm_guided"  # implemented in input_policy3
 class InputInterruptedException(Exception):
     pass
 
+class DMF(object):
+    def __init__(self) -> None:
+        self.start_state = ""
+        self.end_state = ""
+        self.state_strs = []
+    
+    def to_dict(self):
+        return '{start_state : "%s", \n end_state : "%s", \n state_strs: %s}' % (self.start_state, self.end_state, str(self.state_strs))
 
 class InputPolicy(object):
     """
@@ -60,7 +68,7 @@ class InputPolicy(object):
         :param input_manager: instance of InputManager
         """
         self.action_count = 0
-        self.add_DMF = dict()
+        self.DMF_dict = dict[str, DMF]()
         
         while input_manager.enabled and self.action_count < input_manager.event_count:
             try:
@@ -77,17 +85,25 @@ class InputPolicy(object):
                 input_manager.add_event(event)
                 if self.action_count > 2:
                     if self.current_state.recyView_Child_count == 1:
-                        self.add_start_state = self.current_state
-                        self.add_DMF[self.current_state.state_str_without_recyclerview] = []
+                        # self.add_start_state = self.current_state
+                        dmf = DMF()
+                        dmf.start_state = self.current_state.state_str
+                        self.DMF_dict[self.current_state.state_str_without_recyclerview] = dmf
+                        
                     if self.current_state.recyView_Child_count == 2:
-                        self.add_end_state = self.current_state
+                        dmf:DMF = self.DMF_dict[self.current_state.state_str_without_recyclerview]
+                        dmf.end_state = self.current_state.state_str                      
                         print("PostCond satisfied, trying to find the trace")
                         state_strs = nx.shortest_path(G=self.utg.G, \
-                                                      source=self.add_start_state.state_str, \
-                                                      target=self.add_end_state.state_str)
-                        self.add_DMF[self.current_state.state_str_without_recyclerview] = state_strs
+                                                      source=dmf.start_state, \
+                                                      target=dmf.end_state)
+                        dmf.state_strs = state_strs
+                        # save the DMF data into a file
                         with open(self.app.output_dir + "/add_DMF", "w") as file:
-                            file.write(json.dumps(self.add_DMF))
+                            data = ""
+                            for key, value in self.DMF_dict:
+                                data += '{"%s": %s}' % (key, value.to_dict())
+                            file.write(data)
                 # if self.action_count > 2:
                 #     if self.action_count == 10:
                 #         self.add_start_state = self.current_state
