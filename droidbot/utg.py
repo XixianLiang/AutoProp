@@ -149,6 +149,7 @@ class UTG(object):
                 ("package", package_name),
                 ("activity", activity_name),
                 ("state_str", state.state_str),
+                ("state_noRecy", state.state_str_without_recyclerview),
                 ("structure_str", state.structure_str)
             ])
 
