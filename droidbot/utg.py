@@ -62,48 +62,56 @@ class UTG(object):
         if old_state.state_str == new_state.state_str:
             self.ineffective_event_strs.add(event_str)
             # delete the transitions including the event from utg
-            for new_state_str in self.G[old_state.state_str]:
-                if event_str in self.G[old_state.state_str][new_state_str]["events"]:
-                    self.G[old_state.state_str][new_state_str]["events"].pop(event_str)
+            # 所以这里是发生啥了？
+            # for new_state_str in self.G[old_state.state_str]:
+            #     if event_str in self.G[old_state.state_str][new_state_str]["events"]:
+            #         # self.G
+            #         # self.G[old_state.state_str][new_state_str]
+            #         self.G[old_state.state_str][new_state_str]["events"].pop(event_str)
             if event_str in self.effective_event_strs:
                 self.effective_event_strs.remove(event_str)
             return
 
         self.effective_event_strs.add(event_str)
 
+        # If the edge from State_1 to State_2 not exists, add the edge. Record it in Graph G1.
         if (old_state.state_str, new_state.state_str) not in self.G.edges():
-            self.G.add_edge(old_state.state_str, new_state.state_str, events={})
+            self.G.add_edge(old_state.state_str, new_state.state_str, events=dict())
 
+        # Use a dict to record the transition in the edge. add the transition in the dict
+        # Hint: there might be 1+ transition from state A to B.
         self.G[old_state.state_str][new_state.state_str]["events"][event_str] = {
             "event": event,
             "id": self.effective_event_count
         }
 
+        # Record the structer state in Graph G2.
         if (old_state.structure_str, new_state.structure_str) not in self.G2.edges():
-            self.G2.add_edge(old_state.structure_str, new_state.structure_str, events={})
+            self.G2.add_edge(old_state.structure_str, new_state.structure_str, events=dict())
 
         self.G2[old_state.structure_str][new_state.structure_str]["events"][event_str] = {
             "event": event,
             "id": self.effective_event_count
         }
 
+        # update the last_state and output the result
         self.last_state = new_state
         self.__output_utg()
 
-    def remove_transition(self, event, old_state, new_state):
-        event_str = event.get_event_str(old_state)
-        if (old_state.state_str, new_state.state_str) in self.G.edges():
-            events = self.G[old_state.state_str][new_state.state_str]["events"]
-            if event_str in events.keys():
-                events.pop(event_str)
-            if len(events) == 0:
-                self.G.remove_edge(old_state.state_str, new_state.state_str)
-        if (old_state.structure_str, new_state.structure_str) in self.G2.edges():
-            events = self.G2[old_state.structure_str][new_state.structure_str]["events"]
-            if event_str in events.keys():
-                events.pop(event_str)
-            if len(events) == 0:
-                self.G2.remove_edge(old_state.structure_str, new_state.structure_str)
+    # def remove_transition(self, event, old_state, new_state):
+    #     event_str = event.get_event_str(old_state)
+    #     if (old_state.state_str, new_state.state_str) in self.G.edges():
+    #         events = self.G[old_state.state_str][new_state.state_str]["events"]
+    #         if event_str in events.keys():
+    #             events.pop(event_str)
+    #         if len(events) == 0:
+    #             self.G.remove_edge(old_state.state_str, new_state.state_str)
+    #     if (old_state.structure_str, new_state.structure_str) in self.G2.edges():
+    #         events = self.G2[old_state.structure_str][new_state.structure_str]["events"]
+    #         if event_str in events.keys():
+    #             events.pop(event_str)
+    #         if len(events) == 0:
+    #             self.G2.remove_edge(old_state.structure_str, new_state.structure_str)
 
     def add_node(self, state):
         if not state:

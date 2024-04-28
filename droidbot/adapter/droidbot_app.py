@@ -41,6 +41,7 @@ class DroidBotAppConn(Adapter):
         :return:
         """
         self.logger = logging.getLogger(self.__class__.__name__)
+        # self.host = "172.29.192.1"
         self.host = "localhost"
         if device is None:
             from droidbot.device import Device
@@ -105,6 +106,7 @@ class DroidBotAppConn(Adapter):
             serial_cmd = "" if self.device is None else "-s " + self.device.serial
             forward_cmd = "adb %s forward tcp:%d %s" % (serial_cmd, self.port, DROIDBOT_APP_REMOTE_ADDR)
             subprocess.check_call(forward_cmd.split())
+            self.logger.info("connecting droidbot App, port: %d" % self.port)
             self.sock.connect((self.host, self.port))
             import threading
             listen_thread = threading.Thread(target=self.listen_messages)

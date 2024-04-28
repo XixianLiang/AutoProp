@@ -9,7 +9,7 @@ from .input_event import InputEvent, KeyEvent, IntentEvent, TouchEvent, ManualEv
 from .utg import UTG
 
 from .device_state import DeviceState
-from .input_manager import InputManager
+from .app import App
 
 # Max number of restarts
 MAX_NUM_RESTARTS = 5
@@ -46,13 +46,16 @@ class InputInterruptedException(Exception):
 class DMF(object):
 
     def __init__(self) -> None:
-        self.start_state = ""
-        self.end_state = ""
-        self.state_strs = []
+        self.start_child_count:int
+        self.start_state:str = ""
+        self.end_state:str = ""
+        self.state_strs:list = []
     
     def to_dict(self):
-        return "{\"start_state\" : \"%s\", \n \"end_state\" : \"%s\", \n \"state_strs\": %s}" \
-              % (self.start_state, self.end_state, json.dumps(self.state_strs))
+        return {"start_child_count":self.start_child_count,
+                "start_state":self.start_state,
+                "end_state":self.end_state,
+                "state_strs":self.state_strs}
 
 class InputPolicy(object):
     """
@@ -61,6 +64,7 @@ class InputPolicy(object):
     """
 
     current_state:DeviceState
+    app:App
 
     def __init__(self, device, app):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -69,7 +73,7 @@ class InputPolicy(object):
         self.action_count = 0
         self.master = None
 
-    def start(self, input_manager:InputManager):
+    def start(self, input_manager):
         """
         start producing events
         :param input_manager: instance of InputManager
@@ -85,30 +89,35 @@ class InputPolicy(object):
                 #     event = KeyEvent(name="HOME")
                 # elif self.action_count == 1 and self.master is None:
                 #     event = IntentEvent(self.app.get_start_intent())
-                if self.action_count == 0 and self.master is None:
+                if self.action_count % 200 == 0 and self.master is None:
                     event = KillAppEvent(app=self.app)
                 else:
                     event = self.generate_event()
                 input_manager.add_event(event)
                 if self.action_count > 2:
-                    if self.current_state.recyView_Child_count == 1:
+                    current_child_count = self.current_state.current_child_count
+                    if current_child_count > 5:
+                        continue
+                    if current_child_count >= 1:
+                        search_id = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(current_child_count - 1)}"
                         # satisfied precondition, initialize a DMF function
-                        # self.add_start_state = self.current_state
-                        dmf = DMF()
-                        dmf.start_state = self.current_state.state_str
-                        self.DMF_dict[self.current_state.state_str_without_recyclerview] = dmf
-                        
-                    if self.current_state.recyView_Child_count == 2:
-                        # satisfied postcondition, find the DMF path and record the DMF 
-                        dmf:DMF = self.DMF_dict[self.current_state.state_str_without_recyclerview]
-                        dmf.end_state = self.current_state.state_str                      
-                        print("PostCond satisfied, trying to find the trace")
-                        state_strs = nx.shortest_path(G=self.utg.G, \
-                                                      source=dmf.start_state, \
-                                                      target=dmf.end_state)
-                        dmf.state_strs = state_strs
-                        # save the DMF data into a file
-                        self.output_DMF()
+                        if search_id not in self.DMF_dict.keys():
+                            dmf = DMF()
+                            dmf.start_state = self.current_state.state_str
+                            dmf.start_child_count = current_child_count
+                            dmfID = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(dmf.start_child_count)}"
+                            self.DMF_dict[dmfID] = dmf
+                        else:
+                            # satisfied postcondition, find the DMF path and record the DMF 
+                            dmf:DMF = self.DMF_dict[search_id]
+                            dmf.end_state = self.current_state.state_str                      
+                            print("PostCond satisfied, trying to find the trace")
+                            state_strs = nx.shortest_path(G=self.utg.G, \
+                                                        source=dmf.start_state, \
+                                                        target=dmf.end_state)
+                            dmf.state_strs = state_strs
+                            # save the DMF data into a file
+                        self._output_DMF()
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
@@ -121,18 +130,15 @@ class InputPolicy(object):
                 continue
             self.action_count += 1
     
-    def output_DMF(self):
+    def _output_DMF(self):
         """
         save the found DMF into a json file
         """
-        with open("add_DMF.json", "w") as file:
-            data = "{"
-            for index, (key, value) in enumerate(self.DMF_dict.items()):
-                data += '"%s": %s' % (key, value.to_dict())
-                if index != len(self.DMF_dict) - 1:
-                    data += ","
-            data += "}"
-            file.write(data)
+        with open(self.app.output_dir + "/add_DMF.json", "w") as file:
+            output_dict = dict()
+            for dmf_key, dmf in self.DMF_dict.items():
+                output_dict[dmf_key] = dmf.to_dict()
+            file.write(json.dumps(output_dict))
 
     @abstractmethod
     def generate_event(self):
@@ -242,6 +248,7 @@ class UtgBasedInputPolicy(InputPolicy):
         if self.current_state is None:
             import time
             time.sleep(3)
+            self.logger.warning("Current state is None, trying BACK to navigate to normal state.")
             return KeyEvent(name="BACK")
 
         self.utg.add_transition(self.last_event, self.last_state, self.current_state)
@@ -503,7 +510,7 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
         # TODO
         # if there's a edit of click event, do it first.
         print([e.event_type for e in possible_events])
-        possible_events = sorted(possible_events, key=lambda event: event.event_type in ["touch", "set_text"], reverse=True)
+        possible_events = sorted(possible_events, key=lambda event: event.event_type in ["touch", "set_text", "long_touch"], reverse=True)
         print([e.event_type for e in possible_events])
 
         if self.search_method == POLICY_GREEDY_DFS:
@@ -581,82 +588,82 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
         self.__nav_num_steps = -1
         return None
 
-class UtgReplayPolicy(InputPolicy):
-    """
-    Replay DroidBot output generated by UTG policy
-    """
+# class UtgReplayPolicy(InputPolicy):
+#     """
+#     Replay DroidBot output generated by UTG policy
+#     """
 
-    def __init__(self, device, app, replay_output):
-        super(UtgReplayPolicy, self).__init__(device, app)
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.replay_output = replay_output
+#     def __init__(self, device, app, replay_output):
+#         super(UtgReplayPolicy, self).__init__(device, app)
+#         self.logger = logging.getLogger(self.__class__.__name__)
+#         self.replay_output = replay_output
 
-        import os
-        event_dir = os.path.join(replay_output, "events")
-        self.event_paths = sorted([os.path.join(event_dir, x) for x in
-                                   next(os.walk(event_dir))[2]
-                                   if x.endswith(".json")])
-        # skip HOME and start app intent
-        self.device = device
-        self.app = app
-        self.event_idx = 2
-        self.num_replay_tries = 0
-        self.utg = UTG(device=device, app=app, random_input=None)
-        self.last_event = None
-        self.last_state = None
-        self.current_state = None
+#         import os
+#         event_dir = os.path.join(replay_output, "events")
+#         self.event_paths = sorted([os.path.join(event_dir, x) for x in
+#                                    next(os.walk(event_dir))[2]
+#                                    if x.endswith(".json")])
+#         # skip HOME and start app intent
+#         self.device = device
+#         self.app = app
+#         self.event_idx = 2
+#         self.num_replay_tries = 0
+#         self.utg = UTG(device=device, app=app, random_input=None)
+#         self.last_event = None
+#         self.last_state = None
+#         self.current_state = None
 
-    def generate_event(self):
-        """
-        generate an event based on replay_output
-        @return: InputEvent
-        """
-        import time
-        while self.event_idx < len(self.event_paths) and \
-              self.num_replay_tries < MAX_REPLY_TRIES:
-            self.num_replay_tries += 1
-            current_state = self.device.get_current_state()
-            if current_state is None:
-                time.sleep(5)
-                self.num_replay_tries = 0
-                return KeyEvent(name="BACK")
+#     def generate_event(self):
+#         """
+#         generate an event based on replay_output
+#         @return: InputEvent
+#         """
+#         import time
+#         while self.event_idx < len(self.event_paths) and \
+#               self.num_replay_tries < MAX_REPLY_TRIES:
+#             self.num_replay_tries += 1
+#             current_state = self.device.get_current_state()
+#             if current_state is None:
+#                 time.sleep(5)
+#                 self.num_replay_tries = 0
+#                 return KeyEvent(name="BACK")
 
-            curr_event_idx = self.event_idx
-            self.__update_utg()
-            while curr_event_idx < len(self.event_paths):
-                event_path = self.event_paths[curr_event_idx]
-                with open(event_path, "r") as f:
-                    curr_event_idx += 1
+#             curr_event_idx = self.event_idx
+#             self.__update_utg()
+#             while curr_event_idx < len(self.event_paths):
+#                 event_path = self.event_paths[curr_event_idx]
+#                 with open(event_path, "r") as f:
+#                     curr_event_idx += 1
 
-                    try:
-                        event_dict = json.load(f)
-                    except Exception as e:
-                        self.logger.info("Loading %s failed" % event_path)
-                        continue
+#                     try:
+#                         event_dict = json.load(f)
+#                     except Exception as e:
+#                         self.logger.info("Loading %s failed" % event_path)
+#                         continue
 
-                    if event_dict["start_state"] != current_state.state_str:
-                        continue
-                    if not self.device.is_foreground(self.app):
-                        # if current app is in background, bring it to foreground
-                        component = self.app.get_package_name()
-                        if self.app.get_main_activity():
-                            component += "/%s" % self.app.get_main_activity()
-                        return IntentEvent(Intent(suffix=component))
+#                     if event_dict["start_state"] != current_state.state_str:
+#                         continue
+#                     if not self.device.is_foreground(self.app):
+#                         # if current app is in background, bring it to foreground
+#                         component = self.app.get_package_name()
+#                         if self.app.get_main_activity():
+#                             component += "/%s" % self.app.get_main_activity()
+#                         return IntentEvent(Intent(suffix=component))
                     
-                    self.logger.info("Replaying %s" % event_path)
-                    self.event_idx = curr_event_idx
-                    self.num_replay_tries = 0
-                    # return InputEvent.from_dict(event_dict["event"])
-                    event = InputEvent.from_dict(event_dict["event"])
-                    self.last_state = self.current_state
-                    self.last_event = event
-                    return event                    
+#                     self.logger.info("Replaying %s" % event_path)
+#                     self.event_idx = curr_event_idx
+#                     self.num_replay_tries = 0
+#                     # return InputEvent.from_dict(event_dict["event"])
+#                     event = InputEvent.from_dict(event_dict["event"])
+#                     self.last_state = self.current_state
+#                     self.last_event = event
+#                     return event                    
 
-            time.sleep(5)
+#             time.sleep(5)
 
-        # raise InputInterruptedException("No more record can be replayed.")
-    def __update_utg(self):
-        self.utg.add_transition(self.last_event, self.last_state, self.current_state)
+#         # raise InputInterruptedException("No more record can be replayed.")
+#     def __update_utg(self):
+#         self.utg.add_transition(self.last_event, self.last_state, self.current_state)
 
 
 class ManualPolicy(UtgBasedInputPolicy):

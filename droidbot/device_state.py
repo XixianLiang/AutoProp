@@ -26,7 +26,7 @@ class DeviceState(object):
         self.views = self.__parse_views(views)
         self.views_without_recyclerview = None
 
-        self.recyView_Child_count = 0
+        self.current_child_count = 0
 
         self.view_tree = {}
         self.view_tree_without_recyclerview = {}
@@ -99,7 +99,7 @@ class DeviceState(object):
                 if child["class"] == RECYCLERVIEW_ID:
                     print("### find recyclerview, it has %d childrens ###" % child["child_count"])
                     print("### recycler view temp_id is %d ###" % child["temp_id"])
-                    self.recyView_Child_count = child["child_count"]
+                    self.current_child_count = child["child_count"]
                     node["child_count"] -= 1
                     # recycler_view_node = child
                     self.recyRootNode = child
@@ -214,13 +214,13 @@ class DeviceState(object):
                 Abstract level 1:
                 Divide into 2 clusters
                 recyclerView_child_count = 1
-                recyclerView_child_count >= 2
+                recyclerView_child_count >= 4
                 """
                 for view in self.views_without_recyclerview:
                     view_signature = DeviceState.__get_view_signature(view)
                     if view_signature and view["class"] == RECYCLERVIEW_ID:
                         print("##### %s #####" % view_signature)
-                        view_signature += "[child_count]%d" % (2 if view["child_count"] > 2 else view["child_count"])
+                        view_signature += "[child_count]%d" % (4 if view["child_count"] > 4 else view["child_count"])
                         view["signature"] = view_signature
                     if view_signature:
                         view_signatures.append(view_signature)
