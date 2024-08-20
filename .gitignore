@@ -67,5 +67,6 @@ venv
 outom
 output*
 
+.vscode/
 apk/
 *.txt
