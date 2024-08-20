@@ -110,6 +110,7 @@ def main():
     if os.path.exists(opts.output_dir + "/index.html"):
         if (input("Output already exist, want to overwrite? [Y/n]") not in ["Y", "y", ""]):
             return
+        # clean the output
         import shutil
         shutil.rmtree(opts.output_dir)
     

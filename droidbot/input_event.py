@@ -7,6 +7,10 @@ from abc import abstractmethod
 from . import utils
 from .intent import Intent
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .device import Device
+
 POSSIBLE_KEYS = [
     "BACK",
     "MENU",
@@ -95,6 +99,7 @@ class InputEvent(object):
     def __init__(self):
         self.event_type = None
         self.log_lines = None
+        self._keyword = None
 
     def to_dict(self):
         return self.__dict__
@@ -104,6 +109,17 @@ class InputEvent(object):
 
     def __str__(self):
         return self.to_dict().__str__()
+    
+    def get_signature(self) -> str:
+        return self.view["signature"] if hasattr(self, "view") else ""
+    
+    @property
+    def keyword(self) -> str:
+        return self._keyword
+    
+    @keyword.setter
+    def keyword(self, keyword):
+        self._keyword = keyword
 
     @abstractmethod
     def send(self, device):
@@ -725,7 +741,7 @@ class SetTextEvent(UIEvent):
         if event_dict is not None:
             self.__dict__.update(event_dict)
 
-    def send(self, device):
+    def send(self, device:"Device"):
         x, y = UIEvent.get_xy(x=self.x, y=self.y, view=self.view)
         touch_event = TouchEvent(x=x, y=y)
         touch_event.send(device)

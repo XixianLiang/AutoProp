@@ -62,7 +62,6 @@ class UTG(object):
         if old_state.state_str == new_state.state_str:
             self.ineffective_event_strs.add(event_str)
             # delete the transitions including the event from utg
-            # 所以这里是发生啥了？
             # for new_state_str in self.G[old_state.state_str]:
             #     if event_str in self.G[old_state.state_str][new_state_str]["events"]:
             #         # self.G

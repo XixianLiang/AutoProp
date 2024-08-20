@@ -3,7 +3,7 @@ import math
 import os
 
 from .utils import md5
-from .input_event import TouchEvent, LongTouchEvent, ScrollEvent, SetTextEvent, KeyEvent
+from .input_event import TouchEvent, LongTouchEvent, ScrollEvent, SetTextEvent, KeyEvent, UIEvent, InputEvent
 
 RECYCLERVIEW_ID = "androidx.recyclerview.widget.RecyclerView"
 
@@ -52,6 +52,13 @@ class DeviceState(object):
         print("state_noRecy: %s" % self.state_str_without_recyclerview)
         
         # self.state_str = self.state_str_without_recyclerview
+        self.__view_signatures
+        
+        all_view_sig = "\n".join(self.__view_signatures)
+        if "Trash" in all_view_sig:
+            with open("trash.txt", "w") as fp:
+                fp.write(self.state_str)
+            print("found trash through longclick")
 
         self.structure_str = self.__get_content_free_state_str()
         self.search_content = self.__get_search_content()
@@ -188,6 +195,7 @@ class DeviceState(object):
         state_str_raw = self.__get_state_str_raw(with_recyclerview=True)
         state_str_without_recyclerview_raw = self.__get_state_str_raw(with_recyclerview=False)
         return md5(state_str_raw), md5(state_str_without_recyclerview_raw)
+    
 
     def __get_state_str_raw(self, with_recyclerview):
         """
@@ -230,10 +238,11 @@ class DeviceState(object):
                 Only 1 cluster
                 recyclerView_child_count = N (N is natural number)
                 """
-                for view in self.views_without_recyclerview:
+                for view in self.views:
                     view_signature = DeviceState.__get_view_signature(view)
                     if view_signature:
                         view_signatures.append(view_signature)    
+            self.__view_signatures = view_signatures
             return "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
 
     def __get_content_free_state_str(self):
@@ -534,8 +543,70 @@ class DeviceState(object):
                 return depth
             depth += 1
         return -1
+    
+    def get_all_input(self):
+        """
+        Get all input events for this state
+        :return: list of InputEvent
+        """
+        if self.possible_events:
+            return [] + self.possible_events
+        possible_events = []
+        enabled_view_ids = []
+        touch_exclude_view_ids = set()
+        for view_dict in self.views:
+            # exclude navigation bar if exists
+            if self.__safe_dict_get(view_dict, 'enabled') and \
+                    self.__safe_dict_get(view_dict, 'visible') and \
+                    self.__safe_dict_get(view_dict, 'resource_id') not in \
+               ['android:id/navigationBarBackground',
+                'android:id/statusBarBackground']:
+                enabled_view_ids.append(view_dict['temp_id'])
+        # enabled_view_ids.reverse()
 
-    def get_possible_input(self):
+        def add_children(root_id, event_type:UIEvent):
+            ids = set()
+            ids.add(root_id)
+            while len(ids) > 0:
+                id = ids.pop()
+                ids.union(self.get_all_children(self.views[id]))
+                possible_events.append(event_type(view=self.views[id]))
+
+
+        
+        for view_id in enabled_view_ids:
+            if self.__safe_dict_get(self.views[view_id], 'clickable'):
+                possible_events.append(TouchEvent(view=self.views[view_id]))
+                add_children(view_id, TouchEvent)
+
+        for view_id in enabled_view_ids:
+            if self.__safe_dict_get(self.views[view_id], 'long_clickable'):
+                possible_events.append(LongTouchEvent(view=self.views[view_id]))
+                add_children(view_id, LongTouchEvent)
+
+        for view_id in enabled_view_ids:
+            if self.__safe_dict_get(self.views[view_id], 'editable'):
+                possible_events.append(SetTextEvent(view=self.views[view_id], text="Hello World"))
+                touch_exclude_view_ids.add(view_id)
+                # TODO figure out what event can be sent to editable views
+                pass
+
+        for view_id in enabled_view_ids:
+            if view_id in touch_exclude_view_ids:
+                continue
+            children = self.__safe_dict_get(self.views[view_id], 'children')
+            if children and len(children) > 0:
+                continue
+            possible_events.append(TouchEvent(view=self.views[view_id]))
+
+        # For old Android navigation bars
+        # possible_events.append(KeyEvent(name="MENU"))
+
+        self.possible_events = possible_events
+        return [] + possible_events
+
+
+    def get_possible_input(self) -> list[InputEvent]:
         """
         Get a list of possible input events for this state
         :return: list of InputEvent

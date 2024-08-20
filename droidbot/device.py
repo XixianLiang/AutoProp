@@ -91,6 +91,17 @@ class Device(object):
             self.droidbot_ime: True
         }
 
+        # self.adapters = {
+        #     self.adb: True,
+        #     self.telnet: False,
+        #     self.droidbot_app: False,
+        #     self.minicap: False,
+        #     self.logcat: False,
+        #     self.user_input_monitor: False,
+        #     self.process_monitor: False,
+        #     self.droidbot_ime: False
+        # }
+
         # minicap currently not working on emulators
         if self.is_emulator:
             self.logger.info("disable minicap on emulator")
@@ -821,6 +832,9 @@ class Device(object):
         current_state = None
         try:
             views = self.get_views()
+            with open("example.json", "w", encoding="utf-8") as f:
+                import json
+                json.dump(views, f)
             foreground_activity = self.get_top_activity_name()
             activity_stack = self.get_current_activity_stack()
             background_services = self.get_service_names()

@@ -4,12 +4,17 @@ import logging
 import random
 import networkx as nx
 from abc import abstractmethod
+import queue
 
 from .input_event import InputEvent, KeyEvent, IntentEvent, TouchEvent, ManualEvent, SetTextEvent, KillAppEvent
 from .utg import UTG
 
 from .device_state import DeviceState
 from .app import App
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .input_manager import InputManager
+    from .input_event import InputEvent
 
 # Max number of restarts
 MAX_NUM_RESTARTS = 5
@@ -73,18 +78,22 @@ class InputPolicy(object):
         self.action_count = 0
         self.master = None
 
-    def start(self, input_manager):
+    def start(self, input_manager: "InputManager"):
         """
         start producing events
         :param input_manager: instance of InputManager
         """
         self.action_count = 0
         self.DMF_dict = dict[str, DMF]()
+
+        from myQueue import Queue
+        self.cache = Queue(max_size=80)
+        self.logger.info(f"Cache size is {self.cache._max_size}")
         
         while input_manager.enabled and self.action_count < input_manager.event_count:
             try:
-                # # make sure the first event is go to HOME screen
-                # # the second event is to start the app
+                # * make sure the first event is go to HOME screen
+                # * the second event is to start the app
                 # if self.action_count == 0 and self.master is None:
                 #     event = KeyEvent(name="HOME")
                 # elif self.action_count == 1 and self.master is None:
@@ -95,29 +104,29 @@ class InputPolicy(object):
                     event = self.generate_event()
                 input_manager.add_event(event)
                 if self.action_count > 2:
-                    current_child_count = self.current_state.current_child_count
-                    if current_child_count > 5:
-                        continue
-                    if current_child_count >= 1:
-                        search_id = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(current_child_count - 1)}"
-                        # satisfied precondition, initialize a DMF function
-                        if search_id not in self.DMF_dict.keys():
-                            dmf = DMF()
-                            dmf.start_state = self.current_state.state_str
-                            dmf.start_child_count = current_child_count
-                            dmfID = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(dmf.start_child_count)}"
-                            self.DMF_dict[dmfID] = dmf
-                        else:
-                            # satisfied postcondition, find the DMF path and record the DMF 
-                            dmf:DMF = self.DMF_dict[search_id]
-                            dmf.end_state = self.current_state.state_str                      
-                            print("PostCond satisfied, trying to find the trace")
-                            state_strs = nx.shortest_path(G=self.utg.G, \
-                                                        source=dmf.start_state, \
-                                                        target=dmf.end_state)
-                            dmf.state_strs = state_strs
+                    # if (current_child_count := self.current_state.current_child_count) > 5:
+                    #     continue
+                    # if current_child_count >= 1:
+                    #     search_id = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(current_child_count - 1)}"
+                        # # satisfied precondition, initialize a DMF function
+                        # if search_id not in self.DMF_dict.keys():
+                        #     dmf = DMF()
+                        #     dmf.start_state = self.current_state.state_str
+                        #     dmf.start_child_count = current_child_count
+                        #     dmfID = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(dmf.start_child_count)}"
+                        #     self.DMF_dict[dmfID] = dmf
+                        # else:
+                        #     # satisfied postcondition, find the DMF path and record the DMF 
+                        #     dmf:DMF = self.DMF_dict[search_id]
+                        #     dmf.end_state = self.current_state.state_str                      
+                        #     print("PostCond satisfied, trying to find the trace")
+                        #     state_strs = nx.shortest_path(G=self.utg.G, \
+                        #                                 source=dmf.start_state, \
+                        #                                 target=dmf.end_state)
+                        #     dmf.state_strs = state_strs
                             # save the DMF data into a file
                         self._output_DMF()
+                
             except KeyboardInterrupt:
                 break
             except InputInterruptedException as e:
@@ -128,6 +137,26 @@ class InputPolicy(object):
                 import traceback
                 traceback.print_exc()
                 continue
+            
+            
+            # caching
+            try:
+                current_child_count = self.current_state.current_child_count
+                current_state_str = self.current_state.state_str
+                dmfID = current_state_str[:6]
+
+                self.cache.append({
+                    "state_str": current_state_str,
+                    "dmfID":dmfID if current_child_count else None,
+                    "current_child_count": current_child_count if current_child_count else None,
+                    "keyword": event.keyword,
+                    "event": str(event)
+                })
+                with open("cached_events.txt", "w") as fp:
+                    # fp.writelines(f"{line}\n" for line in self.cache)
+                    fp.writelines(f"{json.dumps(line)}\n" for line in self.cache)
+            except AttributeError as e:
+                self.logger.warning("exeception during caching events")
             self.action_count += 1
     
     def _output_DMF(self):
@@ -504,14 +533,18 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
 
         # Get all possible input events
         possible_events = current_state.get_possible_input()
+        # possible_events = current_state.get_all_input()
 
         random.shuffle(possible_events)
 
-        # TODO
+        # TODO choose trash
         # if there's a edit of click event, do it first.
         print([e.event_type for e in possible_events])
         possible_events = sorted(possible_events, key=lambda event: event.event_type in ["touch", "set_text", "long_touch"], reverse=True)
         print([e.event_type for e in possible_events])
+        if any("Trash" in (target_event := event).get_signature() for event in possible_events):
+            target_event.keyword = "Delete"
+            return target_event
 
         if self.search_method == POLICY_GREEDY_DFS:
             possible_events.append(KeyEvent(name="BACK"))
