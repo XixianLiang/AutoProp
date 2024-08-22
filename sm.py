@@ -2,12 +2,11 @@ from transitions import Machine, State
 from myQueue import Queue
 
 class Model:
-    def print_state(self):
-        print()
+    pass
 
 class StateMachine:
     states = [
-        {"name": "idle", "on_enter":"print_state"},
+        {"name": "idle"},
         {"name": "dmf_pre"},
         {"name": "dmf_delete"},
         {"name": "dmf_post"}
@@ -19,6 +18,9 @@ class StateMachine:
         {"source": "dmf_delete", "dest": "dmf_post", "trigger": "reach_dmf"},
         {"source": "dmf_post", "dest": "idle", "trigger": "reset"}
     ]
+
+    _count = -1
+    _keyword = ""
 
     def __init__(self):
         self._m = Model()
@@ -37,6 +39,33 @@ class StateMachine:
     
     def push(self, event):
         self._q.append(event)
+
+    def __str__(self) -> str:
+        return f"State(count:{self.hypothesis_count}, keyword:{self._keyword if self._keyword else 'None'})"
+
+    @property
+    def hypothesis_count(self):
+        return self._count
+    
+    @hypothesis_count.setter
+    def hypothesis_count(self, value):
+        self._count = value
+
+    def check_dmf(self, current_count):
+        assert self.state == "dmf_post"
+        
+        try:
+            if (hypothesis_succeed := (self.hypothesis_count == current_count)):
+                return self._keyword, self._q
+            else:
+                return False, None
+        finally:
+            self.trigger("reset")
+    
+    def proccess_keyword(self, keyword):
+        self._keyword = keyword
+        if keyword == "delete":
+            self.hypothesis_count -= 1
     
     @property
     def state(self):
@@ -47,14 +76,21 @@ class SM_Controller():
         self.sm = StateMachine()
 
     def push(self, event):
+        print(f"current_state{str(self.sm)}, pushing event:{event}")
+
         if event["dmfID"] is not None:
             self.sm.trigger("reach_dmf")
             self.sm.push(event)
-            return
+            if self.sm.state == "dmf_pre":
+                self.sm.hypothesis_count = event["current_child_count"]
+            elif self.sm.state == "dmf_post":
+                dmf_type, event_trace = self.sm.check_dmf(event["current_child_count"])
+                print(f"found DMF {dmf_type}")
         
         if event["keyword"] is not None:
             self.sm.trigger((keyword := event["keyword"]))
             self.sm.push(event)
+            self.sm.proccess_keyword(keyword)
             return
 
         if self.sm.state != "idle":

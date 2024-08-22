@@ -4,7 +4,6 @@ import logging
 import random
 import networkx as nx
 from abc import abstractmethod
-import queue
 
 from .input_event import InputEvent, KeyEvent, IntentEvent, TouchEvent, ManualEvent, SetTextEvent, KillAppEvent
 from .utg import UTG
@@ -15,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .input_manager import InputManager
     from .input_event import InputEvent
+
+from myQueue import Queue, DMF
 
 # Max number of restarts
 MAX_NUM_RESTARTS = 5
@@ -48,19 +49,7 @@ POLICY_LLM_GUIDED = "llm_guided"  # implemented in input_policy3
 class InputInterruptedException(Exception):
     pass
 
-class DMF(object):
 
-    def __init__(self) -> None:
-        self.start_child_count:int
-        self.start_state:str = ""
-        self.end_state:str = ""
-        self.state_strs:list = []
-    
-    def to_dict(self):
-        return {"start_child_count":self.start_child_count,
-                "start_state":self.start_state,
-                "end_state":self.end_state,
-                "state_strs":self.state_strs}
 
 class InputPolicy(object):
     """
@@ -104,28 +93,7 @@ class InputPolicy(object):
                     event = self.generate_event()
                 input_manager.add_event(event)
                 if self.action_count > 2:
-                    # if (current_child_count := self.current_state.current_child_count) > 5:
-                    #     continue
-                    # if current_child_count >= 1:
-                    #     search_id = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(current_child_count - 1)}"
-                        # # satisfied precondition, initialize a DMF function
-                        # if search_id not in self.DMF_dict.keys():
-                        #     dmf = DMF()
-                        #     dmf.start_state = self.current_state.state_str
-                        #     dmf.start_child_count = current_child_count
-                        #     dmfID = self.current_state.state_str_without_recyclerview[:6] + f"_0{str(dmf.start_child_count)}"
-                        #     self.DMF_dict[dmfID] = dmf
-                        # else:
-                        #     # satisfied postcondition, find the DMF path and record the DMF 
-                        #     dmf:DMF = self.DMF_dict[search_id]
-                        #     dmf.end_state = self.current_state.state_str                      
-                        #     print("PostCond satisfied, trying to find the trace")
-                        #     state_strs = nx.shortest_path(G=self.utg.G, \
-                        #                                 source=dmf.start_state, \
-                        #                                 target=dmf.end_state)
-                        #     dmf.state_strs = state_strs
-                            # save the DMF data into a file
-                        self._output_DMF()
+                    self._output_DMF()
                 
             except KeyboardInterrupt:
                 break
@@ -139,11 +107,11 @@ class InputPolicy(object):
                 continue
             
             
-            # caching
+            # TODO caching
             try:
                 current_child_count = self.current_state.current_child_count
                 current_state_str = self.current_state.state_str
-                dmfID = current_state_str[:6]
+                dmfID = self.current_state.state_str_without_recyclerview[:6]
 
                 self.cache.append({
                     "state_str": current_state_str,
@@ -151,6 +119,7 @@ class InputPolicy(object):
                     "current_child_count": current_child_count if current_child_count else None,
                     "keyword": event.keyword,
                     "event": str(event)
+                    # "view_list": str(self.current_state.views_without_recyclerview)
                 })
                 with open("cached_events.txt", "w") as fp:
                     # fp.writelines(f"{line}\n" for line in self.cache)

@@ -224,12 +224,12 @@ class DeviceState(object):
                 recyclerView_child_count = 1
                 recyclerView_child_count >= 4
                 """
-                for view in self.views_without_recyclerview:
+                for view in self.views:
                     view_signature = DeviceState.__get_view_signature(view)
-                    if view_signature and view["class"] == RECYCLERVIEW_ID:
-                        print("##### %s #####" % view_signature)
-                        view_signature += "[child_count]%d" % (4 if view["child_count"] > 4 else view["child_count"])
-                        view["signature"] = view_signature
+                    # if view_signature and view["class"] == RECYCLERVIEW_ID:
+                    #     print("##### %s #####" % view_signature)
+                    #     view_signature += "[child_count]%d" % (4 if view["child_count"] > 4 else view["child_count"])
+                    #     view["signature"] = view_signature
                     if view_signature:
                         view_signatures.append(view_signature)
             else:
@@ -238,10 +238,11 @@ class DeviceState(object):
                 Only 1 cluster
                 recyclerView_child_count = N (N is natural number)
                 """
-                for view in self.views:
+                for view in self.views_without_recyclerview:
                     view_signature = DeviceState.__get_view_signature(view)
                     if view_signature:
                         view_signatures.append(view_signature)    
+            
             self.__view_signatures = view_signatures
             return "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
 
