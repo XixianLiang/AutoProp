@@ -2,6 +2,11 @@ import typing
 import collections
 from transitions import Machine, State
 
+DELETE = "Delete"
+START = "start"
+END = "end"
+
+
 class DMF(object):
 
     def __init__(self) -> None:
@@ -35,6 +40,21 @@ class DMF(object):
                 "keyword":self.keyword,
                 "event_trace":self.event_trace}
 
+    def set_index(self, state, i, e):
+        if state == "start":
+            self.start_child_count = e["current_child_count"]
+            self.start_index = i
+        elif state in ["delete"]:
+            self.keyword = e["keyword"]
+            self.keyword_index = i
+        elif state == "end":
+            self.end_index = i
+    
+    def update_trace(self, event_cache):
+        new_trace_len = self.end_index - self.start_index + 1
+        if not self.event_trace or new_trace_len < (old_trace_len := len(self.event_trace)):
+            self.event_trace = event_cache[self.start_index : self.end_index + 1]
+
 class Queue(collections.UserList):
     def __init__(self, args: typing.Optional[typing.Iterable] = None, max_size: int = 100):
         self._max_size = max_size
@@ -61,34 +81,42 @@ class Queue(collections.UserList):
             current_child_count = e["current_child_count"]
             keyword = e["keyword"]
             
+            if i == 71:
+                pass
+
             if dmfID is None and keyword is None:
                 continue
 
             if dmfID is not None:
                 # 当该dmfID已经被初始化过，看看要不要覆盖（child是一样的）或者检查DMF（child不一致）
-                if (dmf := dmf_dict.get(key=dmfID)):
+                if (dmf := dmf_dict.get(dmfID)):
+                    dmf:DMF
                     assert dmf is dmf_dict[dmfID]
+                    assert isinstance(dmf, DMF)
                     history_child_count = dmf.start_child_count
                     if history_child_count == current_child_count:
                         dmf.reset()
-                        dmf.start_child_count = i
+                        dmf.set_index("start", i, e)
                         continue
                     elif history_child_count != current_child_count:
-                        if "delete" == dmf.keyword and current_child_count == history_child_count - 1:
-                            # 胜利！
-                            pass
-                            
-                            
+                        if "Delete" == dmf.keyword and current_child_count == history_child_count - 1:
+                            dmf.set_index("end", i, e)
+                            dmf.update_trace(self)
+                else:
+                    dmf_dict[dmfID] = DMF()
+                    dmf_dict[dmfID].set_index("start", i, e)
             
             if keyword is not None:
                 for _, dmf in dmf_dict.items():
                     if dmf.start_index is not None:
-                        dmf.keyword = keyword
-                        dmf.keyword_index = i
-
-
-                    
+                        dmf.set_index("delete", i, e)
         
+        res:dict[str, DMF] = dict()
+        for _dmfID, _dmf in dmf_dict.items():
+            _dmf:DMF
+            if _dmf.event_trace:
+                res[_dmfID] = _dmf
+        return res
 
 class Stack(collections.UserList):
     def push(self, item):
@@ -135,8 +163,19 @@ class StateMachine:
     def state(self):
         return self._m.state
 
+def get_cache():
+    import json
+    cache = Queue()
+    with open("cached_events_archived.txt", "r") as fp:
+        for line in fp:
+            cache.append(json.loads(line))
+    return cache
+
 if __name__ == "__main__":
     # sm = StateMachine()
     # print(sm.state)  # 输出: idle
     # sm.trigger("reach_dmf")  # 触发事件，进入 dmf_pre 状态
     # print(sm.state)  # 输出: dmf_pre
+    cache = get_cache()
+    d = cache.get_dmf_dict()
+    d
