@@ -89,6 +89,8 @@ def parse_args():
                         help="Ignore Ad views by checking resource_id.")
     parser.add_argument("-replay_output", action="store", dest="replay_output",
                         help="The droidbot output directory being replayed.")
+    parser.add_argument("-events_path", action="store", dest="events_path",
+                        help="Events path to replay")
     options = parser.parse_args()
     # print options
     return options
@@ -174,7 +176,8 @@ def main():
             master=opts.master,
             humanoid=opts.humanoid,
             ignore_ad=opts.ignore_ad,
-            replay_output=opts.replay_output)
+            replay_output=opts.replay_output,
+            events_path=opts.events_path)
         droidbot.start()
     return
 

@@ -191,11 +191,11 @@ class Device(object):
                 continue
             adapter.disconnect()
 
-        if self.output_dir is not None:
-            temp_dir = os.path.join(self.output_dir, "temp")
-            if os.path.exists(temp_dir):
-                import shutil
-                shutil.rmtree(temp_dir)
+        # if self.output_dir is not None:
+        #     temp_dir = os.path.join(self.output_dir, "temp")
+        #     if os.path.exists(temp_dir):
+        #         import shutil
+        #         shutil.rmtree(temp_dir)
 
     def tear_down(self):
         for adapter in self.adapters:

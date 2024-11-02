@@ -1,5 +1,5 @@
 from transitions import Machine, State
-from myQueue import Queue
+from utils import Queue
 
 class Model:
     pass

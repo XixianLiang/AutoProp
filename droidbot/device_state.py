@@ -1,11 +1,28 @@
 import copy
 import math
 import os
-
+import random
 from .utils import md5
 from .input_event import TouchEvent, LongTouchEvent, ScrollEvent, SetTextEvent, KeyEvent, UIEvent, InputEvent
-
+from .recyclerView_dumper import RecyclerViewDumper
 RECYCLERVIEW_ID = "androidx.recyclerview.widget.RecyclerView"
+
+WORDS_LIST = [
+    "apple", "banana", "cherry", "date", "elderberry", "fig", "grape", "honeydew",
+    "kiwi", "lemon", "mango", "nectarine", "orange", "papaya", "quince", "raspberry",
+    "strawberry", "tangerine", "ugli", "vanilla", "watermelon", "xigua", "yam", "zucchini",
+    "apricot", "blackberry", "blueberry", "cantaloupe", "coconut", "cranberry", "currant",
+    "dragonfruit", "gooseberry", "grapefruit", "guava", "jackfruit", "kumquat", "lime",
+    "lychee", "mandarin", "mulberry", "olive", "passionfruit", "peach", "pear", "persimmon",
+    "pineapple", "plum", "pomegranate", "pumpkin", "starfruit", "tamarind", "tomato",
+    "avocado", "blackcurrant", "boysenberry", "clementine", "elderflower", "feijoa",
+    "goji", "huckleberry", "jabuticaba", "kiwifruit", "longan", "loquat", "marionberry",
+    "miraclefruit", "nectar", "oroblanco", "pitaya", "plantain", "pomelo", "rambutan",
+    "redcurrant", "salak", "satsuma", "soursop", "ugni", "yumberry", "ackee", "bilberry",
+    "breadfruit", "calamondin", "cherimoya", "cucumber", "dewberry", "durian", "elder",
+    "jambul", "jostaberry", "mangosteen", "medlar", "naranjilla", "pepino", "physalis",
+    "sapote", "sloe", "surinam", "tangelo"
+]
 
 class DeviceState(object):
     """
@@ -24,7 +41,9 @@ class DeviceState(object):
         self.tag = tag
         self.screenshot_path = screenshot_path
         self.views = self.__parse_views(views)
-        self.views_without_recyclerview = None
+
+
+        # self.views_without_recyclerview = None
 
         self.current_child_count = 0
 
@@ -32,8 +51,19 @@ class DeviceState(object):
         self.view_tree_without_recyclerview = {}
         self.__assemble_view_tree(self.view_tree, self.views)
         self.__generate_view_strs()
-        self.recyRootNode = None
-        self.dump_recyclerview()
+        # self.recyRootNode = None
+
+        recy_dumper = RecyclerViewDumper(self.view_tree, self.views)
+        self.views_without_recyclerview = recy_dumper.views_without_recyclerview
+        self.view_tree_without_recyclerview = recy_dumper.view_tree_without_recyclerview
+
+        if recy_dumper.num_children is not None:
+            print("### find recyclerview, it has %d childrens ###" % recy_dumper.num_children)
+            print("### recycler view temp_id is %d ###" % recy_dumper.root_id)
+            print(f"### recycler view text list {recy_dumper.recyclerView_text} ###")
+        # self.dump_recyclerview()
+
+        self.recydumper = recy_dumper
 
         self.state_str, self.state_str_without_recyclerview = self.__get_state_str()
 
@@ -67,58 +97,63 @@ class DeviceState(object):
         self.width = device.get_width(refresh=True)
         self.height = device.get_height(refresh=False)
 
-    def dump_recyclerview(self):
-        """
-        checkout the view and delete all the listview in the tree
-        which aims at getting the structer without the recyclerview, and to figure out the add DMF.
+    # def dump_recyclerview(self):
+    #     """
+    #     checkout the view and delete all the listview in the tree
+    #     which aims at getting the structer without the recyclerview, and to figure out the add DMF.
 
-        Meanwhile, this function will delete the recyclerview subtree from the view_list.
-        """
+    #     Meanwhile, this function will delete the recyclerview subtree from the view_list.
+    #     """
         
-        self.view_tree_without_recyclerview = copy.deepcopy(self.view_tree)
-        self.views_without_recyclerview = copy.deepcopy(self.views)
+    #     self.view_tree_without_recyclerview = copy.deepcopy(self.view_tree)
+    #     self.views_without_recyclerview = copy.deepcopy(self.views)
+        
+    #     self.recyclerView_texts:set[str] = set()
 
-        def remove_widget(temp_id):
-            """
-            remove widget according to the temp_id
-            """
-            for item in self.views_without_recyclerview:
-                if item["temp_id"] == temp_id:
-                    self.views_without_recyclerview.remove(item)
+    #     def remove_widget(temp_id):
+    #         """
+    #         remove widget according to the temp_id
+    #         """
+    #         for item in self.views_without_recyclerview:
+    #             if item["temp_id"] == temp_id:
+    #                 self.views_without_recyclerview.remove(item)
 
-        def dfs_clean_recyclerview(node, is_subtree):
-            """
-            Use a depth first search algorithm to traverse the tree, 
-            and prune the recyclerview node and its succesors in the tree.
-            """
+    #     def dfs_clean_recyclerview(node, is_subtree):
+    #         """
+    #         Use a depth first search algorithm to traverse the tree, 
+    #         and prune the recyclerview node and its succesors in the tree.
+    #         """
 
-            if node is None:
-                return
+    #         if node is None:
+    #             return
             
-            # delete the node from the list if current view is a subtree of recyclerview
-            # But don't delete the root node of this subtree
-            if is_subtree and node["class"] != RECYCLERVIEW_ID:
-                temp_id = node["temp_id"]
-                remove_widget(temp_id)
+    #         # delete the node from the list if current view is a subtree of recyclerview
+    #         # But don't delete the root node of this subtree
+    #         if is_subtree and node["class"] != RECYCLERVIEW_ID:
+    #             temp_id = node["temp_id"]
+    #             remove_widget(temp_id)
 
-            # recycler_view_node = None
-            for child in node["children"]:
-                if child["class"] == RECYCLERVIEW_ID:
-                    print("### find recyclerview, it has %d childrens ###" % child["child_count"])
-                    print("### recycler view temp_id is %d ###" % child["temp_id"])
-                    self.current_child_count = child["child_count"]
-                    node["child_count"] -= 1
-                    # recycler_view_node = child
-                    self.recyRootNode = child
-                    dfs_clean_recyclerview(child, is_subtree=True)
-                    continue
-                dfs_clean_recyclerview(child, is_subtree=is_subtree)
-            # if recycler_view_node:
-            #     self.node1 = node
-            #     node["child_count"] -= 1
-            #     node["children"].remove(recycler_view_node)
+    #         # recycler_view_node = None
+    #         for child in node["children"]:
+    #             if child["class"] == RECYCLERVIEW_ID:
+    #                 print("### find recyclerview, it has %d childrens ###" % child["child_count"])
+    #                 print("### recycler view temp_id is %d ###" % child["temp_id"])
+    #                 self.current_child_count = child["child_count"]
+    #                 node["child_count"] -= 1
+    #                 # recycler_view_node = child
+    #                 # if node["text"] is not None:
+    #                 self.recyclerView_texts.add(node["text"])
+    #                 # self.recyRootNode = child
+    #                 dfs_clean_recyclerview(child, is_subtree=True)
+    #                 continue
+    #             dfs_clean_recyclerview(child, is_subtree=is_subtree)
+    #         # if recycler_view_node:
+    #         #     self.node1 = node
+    #         #     node["child_count"] -= 1
+    #         #     node["children"].remove(recycler_view_node)
+
             
-        dfs_clean_recyclerview(self.view_tree_without_recyclerview, is_subtree=False)
+    #     dfs_clean_recyclerview(self.view_tree_without_recyclerview, is_subtree=False)
         
 
     @property
@@ -232,6 +267,7 @@ class DeviceState(object):
                     #     view["signature"] = view_signature
                     if view_signature:
                         view_signatures.append(view_signature)
+                self.__view_signatures = view_signatures
             else:
                 """
                 Abstract level 2:
@@ -242,8 +278,8 @@ class DeviceState(object):
                     view_signature = DeviceState.__get_view_signature(view)
                     if view_signature:
                         view_signatures.append(view_signature)    
-            
-            self.__view_signatures = view_signatures
+                self.__view_signatures_without_recyclerView = view_signatures
+
             return "%s{%s}" % (self.foreground_activity, ",".join(sorted(view_signatures)))
 
     def __get_content_free_state_str(self):
@@ -380,9 +416,10 @@ class DeviceState(object):
 
 
         
-        signature = "[class]%s[resource_id]%s[text]%s[%s,%s,%s,%s]" % \
+        signature = "[class]%s[resource_id]%s[description]%s[text]%s[%s,%s,%s,%s]" % \
                     (DeviceState.__safe_dict_get(view_dict, 'class', "None"),
                      DeviceState.__safe_dict_get(view_dict, 'resource_id', "None"),
+                     DeviceState.__safe_dict_get(view_dict, "content_description", "None"),
                      view_text,
                      DeviceState.__key_if_true(view_dict, 'enabled'),
                      DeviceState.__key_if_true(view_dict, 'checked'),
@@ -587,7 +624,7 @@ class DeviceState(object):
 
         for view_id in enabled_view_ids:
             if self.__safe_dict_get(self.views[view_id], 'editable'):
-                possible_events.append(SetTextEvent(view=self.views[view_id], text="Hello World"))
+                possible_events.append(SetTextEvent(view=self.views[view_id], text=random.choice(WORDS_LIST)))
                 touch_exclude_view_ids.add(view_id)
                 # TODO figure out what event can be sent to editable views
                 pass
@@ -652,7 +689,7 @@ class DeviceState(object):
 
         for view_id in enabled_view_ids:
             if self.__safe_dict_get(self.views[view_id], 'editable'):
-                possible_events.append(SetTextEvent(view=self.views[view_id], text="Hello World"))
+                possible_events.append(SetTextEvent(view=self.views[view_id], text=random.choice(WORDS_LIST)))
                 touch_exclude_view_ids.add(view_id)
                 # TODO figure out what event can be sent to editable views
                 pass
@@ -670,6 +707,13 @@ class DeviceState(object):
 
         self.possible_events = possible_events
         return [] + possible_events
+    
+    def get_search_settextEvent(self, input_text):
+        for view_dict in self.views:
+            if self.__safe_dict_get(view_dict, 'editable'):
+                return SetTextEvent(view=view_dict, text=input_text)
+        raise "Search input not found"
+
 
     def get_text_representation(self, merge_buttons=False):
         """
@@ -838,4 +882,5 @@ class DeviceState(object):
         merged_text = '<br>'.join(texts) if len(texts) > 0 else ''
         merged_desc = '<br>'.join(content_descriptions) if len(content_descriptions) > 0 else ''
         return merged_text, merged_desc
+
 

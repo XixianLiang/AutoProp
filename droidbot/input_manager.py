@@ -5,7 +5,7 @@ import time
 
 from .input_event import EventLog
 from .input_policy import UtgBasedInputPolicy, UtgNaiveSearchPolicy, UtgGreedySearchPolicy, \
-                         ManualPolicy, \
+                         ManualPolicy, ReplayPolicy, \
                          POLICY_NAIVE_DFS, POLICY_GREEDY_DFS, \
                          POLICY_NAIVE_BFS, POLICY_GREEDY_BFS, \
                          POLICY_REPLAY, POLICY_MEMORY_GUIDED, POLICY_LLM_GUIDED, \
@@ -29,7 +29,7 @@ class InputManager(object):
     def __init__(self, device, app, policy_name, random_input,
                  event_count, event_interval,
                  script_path=None, profiling_method=None, master=None,
-                 replay_output=None):
+                 replay_output=None, events_path=None):
         """
         manage input event sent to the target device
         :param device: instance of Device
@@ -50,6 +50,7 @@ class InputManager(object):
         self.event_count = event_count
         self.event_interval = event_interval
         self.replay_output = replay_output
+        self.events_path = events_path
 
         self.monkey = None
 
@@ -63,6 +64,11 @@ class InputManager(object):
         self.profiling_method = profiling_method
 
     def get_input_policy(self, device, app, master):
+
+        # 给定了-events_path的时候,进行replay
+        if self.events_path:
+            self.policy_name = POLICY_REPLAY
+
         if self.policy_name == POLICY_NONE:
             input_policy = None
         elif self.policy_name == POLICY_MONKEY:
@@ -78,7 +84,7 @@ class InputManager(object):
             from .input_policy3 import LLM_Guided_Policy
             input_policy = LLM_Guided_Policy(device, app, self.random_input)
         elif self.policy_name == POLICY_REPLAY:
-            input_policy = UtgReplayPolicy(device, app, self.replay_output)
+            input_policy = ReplayPolicy(device, app, self.events_path)
         elif self.policy_name == POLICY_MANUAL:
             input_policy = ManualPolicy(device, app)
         else:

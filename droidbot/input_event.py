@@ -7,9 +7,12 @@ from abc import abstractmethod
 from . import utils
 from .intent import Intent
 
+from PIL import Image, ImageDraw, ImageFont
+
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .device import Device
+    from .app import App
 
 POSSIBLE_KEYS = [
     "BACK",
@@ -86,6 +89,7 @@ KEY_SetTextEvent = "set_text"
 KEY_IntentEvent = "intent"
 KEY_SpawnEvent = "spawn"
 KEY_KillAppEvent = "kill_app"
+KEY_EnterEvent = "enter"
 
 
 class InvalidEventException(Exception):
@@ -182,9 +186,9 @@ class EventLog(object):
     """
 
     def __init__(self, device, app, event, profiling_method=None, tag=None):
-        self.device = device
-        self.app = app
-        self.event = event
+        self.device:"Device" = device
+        self.app:"App" = app
+        self.event:"InputEvent" = event
         if tag is None:
             from datetime import datetime
             tag = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -205,12 +209,20 @@ class EventLog(object):
            self.device.get_sdk_version() >= 21:
             self.sampling = int(profiling_method)
 
+
     def to_dict(self):
         return {
             "tag": self.tag,
             "event": self.event.to_dict(),
             "start_state": self.from_state.state_str,
             "stop_state": self.to_state.state_str,
+            "event_str": self.event_str
+        }
+    
+    def simple_to_dict(self):
+        return {
+            "tag": self.tag,
+            "event": self.event.to_dict(),
             "event_str": self.event_str
         }
 
@@ -234,6 +246,15 @@ class EventLog(object):
             self.device.logger.warning("Saving event to dir failed.")
             self.device.logger.warning(e)
 
+
+            event_json_file = open(event_json_file_path, "w")
+            json.dump(self.simple_to_dict(), event_json_file, indent=2)
+            event_json_file.close()
+
+        
+        # with open(event_json_file_path, "r") as fp:
+        #     obj = json.load(fp)
+
     def save_views(self, output_dir=None):
         # Save views
         views = self.event.get_views()
@@ -255,8 +276,23 @@ class EventLog(object):
         self.from_state = self.device.get_current_state()
         self.start_profiling()
         self.event_str = self.event.get_event_str(self.from_state)
-        print("Action: %s" % self.event_str)
+        print(f"Tag: {self.tag}    Action: {self.event_str} ")
+        self.draw_input_info()
+
         self.device.send_event(self.event)
+
+    def draw_input_info(self):
+        img = Image.open(self.from_state.screenshot_path)
+        draw = ImageDraw.Draw(img)
+        if isinstance(self.event, UIEvent):
+            bounds = self.event.view["bounds"]
+            draw.rectangle([tuple(bounds[0]), tuple(bounds[1])], outline="red", width=5)
+        else:
+            font_path = os.path.join(os.getcwd(), "droidbot", "resources", "arial.ttf")
+            # print(font_path)
+            font = ImageFont.truetype(font_path, size=64)
+            draw.text((10, 10), text=self.event_str, fill="red", font=font)
+        img.save(self.from_state.screenshot_path)
 
     def start_profiling(self):
         """
@@ -420,6 +456,28 @@ class KeyEvent(InputEvent):
     def get_event_str(self, state):
         return "%s(state=%s, name=%s)" % (self.__class__.__name__, state.state_str, self.name)
 
+class EnterEvent(InputEvent):
+    """
+    a key pressing event
+    """
+
+    def __init__(self, event_dict=None):
+        super().__init__()
+        self.event_type = KEY_EnterEvent
+        if event_dict is not None:
+            self.__dict__.update(event_dict)
+
+    @staticmethod
+    def get_random_instance(device, app):
+        return EnterEvent("Enter")
+
+    def send(self, device):
+        device.key_press("66")
+        return True
+
+    def get_event_str(self, state):
+        return "%s(state=%s, name=%s)" % (self.__class__.__name__, state.state_str, KEY_EnterEvent)
+
 
 class UIEvent(InputEvent):
     """
@@ -460,11 +518,12 @@ class UIEvent(InputEvent):
 
     @staticmethod
     def view_str(state, view):
-        view_class = view['class'].split('.')[-1]
-        view_text = view['text'].replace('\n', '\\n') if 'text' in view and view['text'] else ''
-        view_text = view_text[:10] if len(view_text) > 10 else view_text
-        view_short_sig = f'{state.activity_short_name}/{view_class}-{view_text}'
-        return f"state={state.state_str}, view={view['view_str']}({view_short_sig})"
+        # view_class = view['class'].split('.')[-1]
+        # view_text = view['text'].replace('\n', '\\n') if 'text' in view and view['text'] else ''
+        # view_text = view_text[:10] if len(view_text) > 10 else view_text
+        # view_short_sig = f'{state.activity_short_name}/{view_class}-{view_text}'
+        # return f"state={state.state_str}, view={view['view_str']}({view_short_sig})"
+        return f"state={state.state_str}, view={view['signature']}"
 
 
 class TouchEvent(UIEvent):
@@ -852,5 +911,6 @@ EVENT_TYPES = {
     KEY_SwipeEvent: SwipeEvent,
     KEY_ScrollEvent: ScrollEvent,
     KEY_IntentEvent: IntentEvent,
-    KEY_SpawnEvent: SpawnEvent
+    KEY_SpawnEvent: SpawnEvent,
+    KEY_EnterEvent: EnterEvent
 }

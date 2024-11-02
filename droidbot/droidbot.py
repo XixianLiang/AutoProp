@@ -8,6 +8,7 @@ import sys
 import pkg_resources
 import shutil
 from threading import Timer
+import coloredlogs
 
 from .device import Device
 from .app import App
@@ -44,12 +45,14 @@ class DroidBot(object):
                  master=None,
                  humanoid=None,
                  ignore_ad=False,
-                 replay_output=None):
+                 replay_output=None,
+                 events_path=None):
         """
         initiate droidbot with configurations
         :return:
         """
-        logging.basicConfig(level=logging.DEBUG if debug_mode else logging.INFO)
+        # logging.basicConfig(level=logging.DEBUG if debug_mode else logging.INFO)
+        coloredlogs.install(level=logging.DEBUG if debug_mode else logging.INFO)
 
         self.logger = logging.getLogger('DroidBot')
         DroidBot.instance = self
@@ -80,6 +83,7 @@ class DroidBot(object):
         self.humanoid = humanoid
         self.ignore_ad = ignore_ad
         self.replay_output = replay_output
+        self.events_path = events_path
 
         self.enabled = True
 
@@ -109,7 +113,8 @@ class DroidBot(object):
                 script_path=script_path,
                 profiling_method=profiling_method,
                 master=master,
-                replay_output=replay_output)
+                replay_output=replay_output,
+                events_path=events_path)
         except Exception:
             import traceback
             traceback.print_exc()
