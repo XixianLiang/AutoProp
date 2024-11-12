@@ -58,9 +58,10 @@ class DeviceState(object):
         self.view_tree_without_recyclerview = recy_dumper.view_tree_without_recyclerview
 
         if recy_dumper.num_children is not None:
-            print("### find recyclerview, it has %d childrens ###" % recy_dumper.num_children)
-            print("### recycler view temp_id is %d ###" % recy_dumper.root_id)
-            print(f"### recycler view text list {recy_dumper.recyclerView_text} ###")
+            # print("### find recyclerview, it has %d childrens ###" % recy_dumper.num_children)
+            # print("### recycler view temp_id is %d ###" % recy_dumper.root_id)
+            # print(f"### recycler view text list {recy_dumper.recyclerView_text} ###")
+            pass
         # self.dump_recyclerview()
 
         self.recydumper = recy_dumper
@@ -78,8 +79,9 @@ class DeviceState(object):
         # print("len(view) 1 = %d" % len(self.views))
         # print("len(view) 2 = %d" % len(self.views_without_recyclerview))
         # print("recyclerview temp_id is %d " % (self.recyRootNode["temp_id"] if self.recyRootNode else 0))
-        print("state_str: %s" % self.state_str)
-        print("state_noRecy: %s" % self.state_str_without_recyclerview)
+
+        # print("state_str: %s" % self.state_str)
+        # print("state_noRecy: %s" % self.state_str_without_recyclerview)
         
         # self.state_str = self.state_str_without_recyclerview
         self.__view_signatures
@@ -649,6 +651,9 @@ class DeviceState(object):
         Get a list of possible input events for this state
         :return: list of InputEvent
         """
+        
+        # if self.activity_stack:
+
         if self.possible_events:
             return [] + self.possible_events
         possible_events = []

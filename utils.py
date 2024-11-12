@@ -45,6 +45,11 @@ class DMF(dict):
     用来存储DMF结果的类，比DMF_extractor更精简
     """
     def __init__(self, _dmf:"DMF_extractor"):
+        if isinstance(_dmf, dict):
+            temp_dmf = DMF_extractor()
+            for key, value in _dmf.items():
+                setattr(temp_dmf, key, value)
+            _dmf = temp_dmf
         self.event_trace = list(_dmf.event_trace)
         self.start_text_lt = list(_dmf.start_text_lt)
         self.end_text_lt = list(_dmf.end_text_lt)
@@ -60,9 +65,9 @@ class DMF(dict):
 
     def get_changed_item(self, _dmf:"DMF_extractor"):
         if _dmf.keyword == ADD:
-            return (_dmf.end_text_lt - _dmf.start_text_lt)[0]
+            return (SubtractList(_dmf.end_text_lt) - SubtractList(_dmf.start_text_lt))[0]
         elif _dmf.keyword == DELETE:
-            return (_dmf.start_text_lt - _dmf.end_text_lt)[0]
+            return (SubtractList(_dmf.start_text_lt) - SubtractList(_dmf.end_text_lt))[0]
         
 
 
@@ -103,13 +108,13 @@ class DMF_extractor:
         if state == "start":
             self.start_child_count = e["current_child_count"]
             self.start_index = i
-            self.start_text_lt = subtractList(e["text_lt"])
+            self.start_text_lt = SubtractList(e["text_lt"])
         elif state in [DELETE, ADD] or SEARCH in state:
             self.keyword = e["keyword"]
             self.keyword_index = i
         elif state == "end":
             self.end_index = i
-            self.end_text_lt = subtractList(e["text_lt"])
+            self.end_text_lt = SubtractList(e["text_lt"])
     
     def update_trace(self, event_cache):
         new_trace_len = self.end_index - self.start_index + 1
@@ -117,7 +122,7 @@ class DMF_extractor:
             self.event_trace = event_cache[self.start_index : self.end_index + 1]
 
 
-class subtractList(collections.UserList):
+class SubtractList(collections.UserList):
     
     def __sub__(self, others):
         res = copy.deepcopy(self)
@@ -150,7 +155,7 @@ class Queue(collections.UserList):
         for i, e in enumerate(self):
             dmfID = e["dmfID"]
             current_child_count = e["current_child_count"]
-            text_lt = subtractList(e["text_lt"])
+            text_lt = SubtractList(e["text_lt"])
             keyword = e["keyword"]
 
             if dmfID is None and keyword is None:
@@ -177,8 +182,8 @@ class Queue(collections.UserList):
                         dmf.set_index("start", i, e)
                 # 不同的时候进行处理，这里处理的是add和delete
                 elif history_child_count != current_child_count:
-                    assert isinstance(text_lt, subtractList)
-                    assert isinstance(history_text_lt, subtractList)
+                    assert isinstance(text_lt, SubtractList)
+                    assert isinstance(history_text_lt, SubtractList)
                     # if "Delete" == dmf.keyword and current_child_count == history_child_count - 1:
                     if dmf.keyword and DELETE == dmf.keyword and len(history_text_lt - text_lt) == 1 and current_child_count == history_child_count - 1:
                         dmf.set_index("end", i, e)

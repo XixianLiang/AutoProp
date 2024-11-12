@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import itertools
+import time
 import networkx as nx
 from abc import abstractmethod
 
@@ -15,7 +16,7 @@ from .utg import UTG
 
 from .device_state import DeviceState
 from .app import App
-from typing import TYPE_CHECKING, Dict, Tuple
+from typing import TYPE_CHECKING, Dict, Tuple, List
 if TYPE_CHECKING:
     from .input_manager import InputManager
     from .input_event import InputEvent
@@ -179,17 +180,24 @@ class InputPolicy(object):
         with open(DMF_PATH, "w") as fp:
             json.dump(self.dmf_dict, fp)   
         
-
+        self.__output_dot_fmt_DMF()
+       
+        
+        pass
+    
+    def _output_dot_fmt_DMF(self, shortcuts=[], filename="output_dmf.txt"):
         """
         save the found DMF to a txt
         """
         lines = []
-        with open("output_dmf.txt", "w") as fp:
+        with open(filename, "w") as fp:
             if self.dmf_dict:
                 for dmfID, DMFs in self.dmf_dict.items():
-                    for keyword, dmf_trace in DMFs.items():
+                    for keyword, _dmf in DMFs.items():
+                        _dmf["keyword"] = keyword
+                        _dmf = DMF(_dmf)
                         # DMF信息
-                        lines.append("%s::%s::%s::\n" % (keyword, dmfID, dmf_trace.changed_item))
+                        lines.append("%s::%s::%s::\n" % (keyword, dmfID, _dmf.changed_item))
                         # 三行占位
                         lines.extend(["====\n" for _ in range(3)])
                         # 事件信息
@@ -200,17 +208,19 @@ class InputPolicy(object):
                         #     action = "click" if action == "touch" else action
                         #     action = "edit" if action == "set_text" else action
                         #     lines.append("%s::%s::%s::%s::\n" % (i+1, action, event_text, generate_xml_node(event_view)))
+                        j = 1
                         for i, _ in enumerate(self.cache):
+                            # 如果在shortcut里，不考虑
+                            if any(i in range(shortcut[0], shortcut[1]) for shortcut in shortcuts):
+                                continue
                             event_view = json.loads(_["event_view"])
                             event_text = _["text"]
                             action = _["action"]
                             action = "click" if action == "touch" else action
                             action = "edit" if action == "set_text" else action
-                            lines.append("%s::%s::%s::%s::\n" % (i+1, action, event_text, generate_xml_node(event_view)))
+                            lines.append("%s::%s::%s::%s::\n" % (j, action, event_text, generate_xml_node(event_view)))
+                            j += 1
                 fp.writelines(lines)
-        
-        pass
-
 
     @abstractmethod
     def generate_event(self):
@@ -289,7 +299,10 @@ class ReplayPolicy(InputPolicy):
                 except:
                     self.logger.error(f"error when decoding file: {filepath}")
 
-    def get_dmf_info(self) -> Tuple[str, list[dict]]:
+    def get_dmf_info(self) -> Tuple[str, list[dict], Dict]:
+        """
+        :return: dmf_start_states, dmf_events, dmf_dict
+        """
         with open(DMF_PATH, "r") as fp:
             dmf_dict:Type_output_DMFs = json.load(fp)
         
@@ -303,7 +316,7 @@ class ReplayPolicy(InputPolicy):
                 dmf_events = dmf["event_trace"]
                 
         
-        return dmf_start_states, dmf_events
+        return dmf_start_states, dmf_events, dmf_dict
     
 
 
@@ -315,29 +328,94 @@ class ReplayPolicy(InputPolicy):
         self.action_count = 0
         
         self.read_events()
-        self.dmf_start_states, self.dmf_events = self.get_dmf_info()
+        self.dmf_start_states, self.dmf_events, self.dmf_dict = self.get_dmf_info()
+
+        last_event_of_dmf = self.dmf_events[-1]
+        target_end_index = last_event_of_dmf["id"]
+
+        # # replay 成功debug的时候先跳过，这是用来验证序列有没有问题的
+        # self.logger.warning("trying to replay all events")
+        # # print(self.replay(input_manager, end_index=target_end_index))
         
-        self.reduce(input_manager)
+        # self.logger.warning("trying to reduce")
+        # shortcuts = self.reduce(input_manager, end_index=target_end_index)
 
-        print(self.replay(input_manager, end_index=self.dmf_events[-1]["id"]))
+        # self.logger.warning("trying to replay the reduced event")
+        # reduce_successed = self.replay(input_manager, (pair:=shortcuts.pop()), end_index=target_end_index)
+
+        # self.logger.warning(f"{'reduce_successed' if reduce_successed else 'reduce_failed'}")
+        # self.logger.warning(f"found shortcut {pair}")
 
 
+        self._output_dot_fmt_DMF(shortcuts=[(7, 12)], filename="reduced_trace.txt")
     
-    def reduce(self, input_manager:"InputManager"):
+    def _output_dot_fmt_DMF(self, shortcuts=[], filename="output_dmf.txt"):
+        """
+        save the found DMF to a txt
+        """
+        lines = []
+        with open(filename, "w") as fp:
+            if self.dmf_dict:
+                for dmfID, DMFs in self.dmf_dict.items():
+                    for keyword, _dmf in DMFs.items():
+                        _dmf["keyword"] = keyword
+                        _dmf = DMF(_dmf)
+                        # DMF信息
+                        lines.append("%s::%s::%s::\n" % (keyword, dmfID, _dmf.changed_item))
+                        # 三行占位
+                        lines.extend(["====\n" for _ in range(3)])
+                        # 事件信息
+                        # for i, _ in enumerate(dmf_trace["event_trace"]):
+                        #     event_view = json.loads(_["event_view"])
+                        #     event_text = str(event_view["text"])
+                        #     action = _["action"]
+                        #     action = "click" if action == "touch" else action
+                        #     action = "edit" if action == "set_text" else action
+                        #     lines.append("%s::%s::%s::%s::\n" % (i+1, action, event_text, generate_xml_node(event_view)))
+                        j = 1
+                        for i, _ in enumerate(self.input_events):
+                            # 如果在shortcut里，不考虑
+                            if any(i in range(shortcut[0], shortcut[1]) for shortcut in shortcuts):
+                                continue
+                            event = _["event"]
+                            action = event["event_type"]
+
+                            if action in ["kill_app", "intent"]:
+                                continue
+
+                            action = "click" if action == "touch" else action
+                            action = "edit" if action == "set_text" else action
+                            event_view = event["view"]
+                            event_text = event_view["text"]
+                            lines.append("%s::%s::%s::%s::\n" % (j, action, event_text, generate_xml_node(event_view)))
+                            j += 1
+                fp.writelines(lines)
+
+    def reduce(self, input_manager:"InputManager", end_index:int) -> list[Tuple[int,int]]:
         # 获取dmf对应事件的id，编排组合并排序，适应算法，最后获得的是削减的candidates list。
         # 示例 event_ids = [5, 6, 7, 8]      则 candidates 为 [(5, 8), (6, 8), (7, 8), (5, 7), (6, 7), (5, 6)]
-        event_ids = [_["id"] for _ in self.dmf_events]
+        # 最后获得的candidates是可行的
+        event_ids = [_["id"] for _ in self.dmf_events[:-1]]
+
         # event_range = (event_ids[0], event_ids[-1])
         candidates = list(itertools.combinations(event_ids, 2))
         candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
         candidates
-        short_cuts = []
+        shortcuts = []
 
         for pair in candidates:
-            replay_result = self.replay(input_manager, pair)
+            replay_result = self.replay(input_manager, pair, end_index)
             if replay_result:
-                short_cuts.append(pair)
+                shortcuts.append(pair)
                 self.clean_candidates(pair, candidates)
+        
+        if shortcuts:
+            self.logger.warning(f"Reduce success. Available short cuts {shortcuts}")
+        # 此时是所有可行的shorcuts
+        return shortcuts
+        
+
+
         
     def clean_candidates(self, pair, candidates:list[Tuple[int, int]]):
         removable = []
@@ -351,25 +429,48 @@ class ReplayPolicy(InputPolicy):
         
         for _ in set(removable):
             candidates.remove(_)
-        
+
+    def event_in_view(self, event:"InputEvent", event_list:List["InputEvent"]):
+        for e in event_list:
+            if event.event_type == e.event_type and event.view["signature"] == e.view["signature"]:
+                return True
+            if event.event_type == e.event_type and event.event_type == "set_text":
+                return event.view["content_free_signature"] == e.view["content_free_signature"]
+        return False
     
     def replay(self, input_manager:"InputManager", pair:Tuple[int, int]=None, end_index=None):
         self.clear_app_data()
+        time.sleep(3)
+        current_state = self.device.get_current_state()
         ## 根据short cut重放
-        if pair:
+        if pair and end_index:
+            self.logger.info(f"replaying with shortcut {pair}")
             for i, event_record in enumerate(self.input_events):
                 try:
+                    self.logger.info(f"choose event {i}, shortcut {pair}")
                     # 回放到dmf的最后一个事件，则结束
                     if i >= pair[0] and i < pair[1] :
                         continue
 
-                    if i == pair[1]:
+                    if i == end_index:
                         break
 
                     event = InputEvent.from_dict(event_record["event"])
-                    input_manager.add_event(event)
 
+                    if current_state.foreground_activity is None:
+                        pass
+                    # if pair == (7, 12):
+                    #     pass
+                    if current_state.foreground_activity.startswith(self.app.package_name) and \
+                        not self.event_in_view(event, current_state.get_possible_input()):
+                        return False
+                        
+                    input_manager.add_event(event)
                     current_state = self.device.get_current_state()
+                    replay_success = current_state.state_str == event_record["stop_state"]
+
+                    self.logger.info(f"replayed event {i}, replayed {'succeess' if replay_success else 'fail'}")
+
                     if not (replay_success := current_state.state_str == event_record["stop_state"]):
                         self.logger.warning("Path Deviated, kept executing")
                         # input_manager.add_event(KillAppEvent(app=self.app))
@@ -395,6 +496,7 @@ class ReplayPolicy(InputPolicy):
         elif end_index:
             for i, event_record in enumerate(self.input_events):
                 try:
+                    self.logger.info(f"replaying event {i}, end index {end_index}")
                     # 回放到dmf的最后一个事件，则结束
                     if i == end_index:
                         break
@@ -408,12 +510,6 @@ class ReplayPolicy(InputPolicy):
                     current_state = self.device.get_current_state()
                     if not (replay_success := current_state.state_str == event_record["stop_state"]):
                         self.logger.warning("Path Deviated, kept executing")
-                        # input_manager.add_event(KillAppEvent(app=self.app))
-                        # input_manager.add_event(IntentEvent(self.app.get_start_intent()))
-                    # with open("failed_to_reach_states.json", "w") as fp:
-                    #     self.dmf_start_states.discard(current_state.state_str)
-                    #     self.logger.info(f"not reached states {self.dmf_start_states}")
-                    #     json.dump(list(self.dmf_start_states), fp)
                     
                 except KeyboardInterrupt:
                     break
@@ -803,8 +899,9 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
         #     add_events.append(target_event)
 
         if self.add_state == "did_fab":
+            # reduce 测试
             if (target_event := self.get_event(SetTextEvent, possible_events, propability=0.8)):
-                self.add_state = "set_text"
+                self.add_state = "set_text" if random.random() > 0.5 else self.add_state
                 return target_event
         
         if self.add_state == "set_text":
@@ -815,7 +912,7 @@ class UtgGreedySearchPolicy(UtgBasedInputPolicy):
         
         ADD_EVENTS = [SetTextEvent,  "save", "ok"]
         for e in ADD_EVENTS:
-            if (target_event := self.get_event(e, possible_events, propability=1)):
+            if (target_event := self.get_event(e, possible_events, propability=0.7)):
                 add_events.append(target_event)
 
 
